@@ -1,0 +1,6 @@
+{
+  "log": {
+    "fileName": "/data/logs/arbitrage-exchanges.log"
+  },
+  "config": "/data/config/arbitrageExchanges.json"
+}

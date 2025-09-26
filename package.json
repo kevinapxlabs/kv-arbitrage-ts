@@ -1,0 +1,48 @@
+{
+  "name": "apx-fees-cross-exchanges-ts",
+  "version": "1.0.0",
+  "description": "fees of cross exchanges",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "rimraf ./build && tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/index.ts",
+    "build:start": "npm run build && node build/index.js",
+    "start": "NODE_ENV=production node build/index.js",
+    "forever": "NODE_ENV=production forever start -l fees-cross-exchanges.log --append build/index.js",
+    "cli": "NODE_ENV=production node build/cmd/cmd.cli.js",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix ./src",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "bignumber.js": "^9.2.1",
+    "bitget-api": "^3.0.5",
+    "bybit-api": "^4.1.13",
+    "ccxt": "^4.4.92",
+    "config": "^3.3.12",
+    "crypto-js": "^4.2.0",
+    "https-proxy-agent": "^7.0.6",
+    "ioredis": "^5.6.0",
+    "mysql2": "^3.14.0",
+    "node-binance-api": "^1.0.10",
+    "node-cache": "^5.1.2",
+    "node-cron": "^3.0.3",
+    "node-telegram-bot-api": "^0.66.0",
+    "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/config": "^3.3.5",
+    "@types/crypto-js": "^4.2.2",
+    "@types/node": "^20.11.19",
+    "@types/node-cron": "^3.0.11",
+    "@types/node-telegram-bot-api": "^0.64.8",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "plugins": [
+    "@typescript-eslint"
+  ],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/eslint-recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "rules": { 
+    "no-console": 0,
+    "linebreak-style": ["error", "unix"],
+    "quotes": [
+      2,
+      "single",
+      "avoid-escape"
+    ],
+    "eol-last": ["error", "always"],
+    "no-multiple-empty-lines": ["error", {"max": 2, "maxEOF": 0}],
+    "no-explicit-any": true
+  }
+}
