@@ -1,5 +1,5 @@
-import { ExecutionRequest, ExecutionReport, ExchangeId, ExchangeType } from '../types.js'
-import { TokenConfig } from '../types.js'
+import { ExecutionRequest, ExecutionReport, ExchangeId, ExchangeType } from './types.js'
+import { TokenConfig } from './types.js'
 
 export interface ExchangeAccountLimits {
   minQuantity?: number

@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import path from 'path'
 import { defiConfig, ArbitrageRuntimeConfig, ExchangeRuntimeConfig } from '../config/config.js'
 import { blogger } from '../common/base/logger.js'
-import { TokenConfig, ExchangeId } from './types.js'
+import { TokenConfig, ExchangeId } from '../exchanges/types.js'
 
 interface RawTokenListEntry {
   id: number

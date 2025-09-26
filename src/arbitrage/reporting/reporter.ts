@@ -1,5 +1,5 @@
 import { blogger } from '../../common/base/logger.js'
-import { NavSnapshot, PositionExposureSummary } from '../types.js'
+import { NavSnapshot, PositionExposureSummary } from '../../exchanges/types.js'
 
 // NAV 报告输出器，统一日志格式
 export class NavReporter {

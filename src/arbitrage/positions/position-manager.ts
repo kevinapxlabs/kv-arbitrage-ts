@@ -1,6 +1,6 @@
 import { ArbitrageRuntimeConfig } from '../../config/config.js'
 import { blogger } from '../../common/base/logger.js'
-import { ExecutionReport, HedgePosition, PositionExposureSummary, PositionLeg, TokenConfig } from '../types.js'
+import { ExecutionReport, HedgePosition, PositionExposureSummary, PositionLeg, TokenConfig } from '../../exchanges/types.js'
 
 interface OpenPositionParams {
   token: TokenConfig

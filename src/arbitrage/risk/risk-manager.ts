@@ -1,6 +1,6 @@
 import { ArbitrageRuntimeConfig } from '../../config/config.js'
 import { blogger } from '../../common/base/logger.js'
-import { ExchangeOrderBookQuote, HedgePosition, RiskSignal } from '../types.js'
+import { ExchangeOrderBookQuote, HedgePosition, RiskSignal } from '../../exchanges/types.js'
 
 const BPS_FACTOR = 10000
 

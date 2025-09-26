@@ -1,4 +1,4 @@
-import { TokenConfig } from './types.js'
+import { TokenConfig } from '../exchanges/types.js'
 
 // 提供币种配置的查询能力
 export class TokenRegistry {

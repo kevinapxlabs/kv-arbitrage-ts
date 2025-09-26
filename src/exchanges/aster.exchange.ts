@@ -1,8 +1,8 @@
-import { AsterAccountApi, AsterOrderSide, AsterOrderType, AsterPositionSide, AsterNewOrderRespType, AsterOrderStatus } from '../../libs/aster/index.js'
-import { blogger } from '../../common/base/logger.js'
-import { ExchangeRuntimeConfig } from '../../config/config.js'
-import { ExecutionRequest, ExecutionReport, ExchangeId, ExchangeType } from '../types.js'
-import { TokenConfig } from '../types.js'
+import { AsterAccountApi, AsterOrderSide, AsterOrderType, AsterPositionSide, AsterNewOrderRespType, AsterOrderStatus } from '../libs/aster/index.js'
+import { blogger } from '../common/base/logger.js'
+import { ExchangeRuntimeConfig } from '../config/config.js'
+import { ExecutionRequest, ExecutionReport, ExchangeId, ExchangeType } from './types.js'
+import { TokenConfig } from './types.js'
 import { ExchangeAdapter } from './exchange-adapter.js'
 
 const DEFAULT_SETTLEMENT = 'USDT'

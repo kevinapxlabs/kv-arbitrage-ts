@@ -1,7 +1,7 @@
 import { rdsClient } from '../common/db/redis.js'
 import { blogger } from '../common/base/logger.js'
 import { ArbitrageRuntimeConfig, ExchangeRuntimeConfig } from '../config/config.js'
-import { ExchangeId, ExchangeOrderBookQuote, OrderBookLevel, OrderBookQuote, TokenConfig } from './types.js'
+import { ExchangeId, ExchangeOrderBookQuote, OrderBookLevel, OrderBookQuote, TokenConfig } from '../exchanges/types.js'
 
 interface RedisOrderBook {
   bids: Array<[number, number]>
