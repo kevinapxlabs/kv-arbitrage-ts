@@ -5,7 +5,7 @@ import { blogger } from '../base/logger.js'
 export class DefiRedis {
   redisCli
   
-  constructor(url: string, sentinelCfg: TSentinelRedis) {
+  constructor(url: string, sentinelCfg?: TSentinelRedis) {
     if (sentinelCfg !== undefined) {
       this.redisCli = new Redis(sentinelCfg);
     } else if (!url.startsWith('redis')) {
