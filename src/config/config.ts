@@ -24,53 +24,15 @@ export type BotInfo = {
   chatId: string
 }
 
-export type ExchangeFees = {
-  makerBps: number
-  takerBps: number
+// Aster 配置
+export type AsterCfg = {
+  apiKey: string
+  apiSecret: string
 }
-
-export type ExchangeRuntimeConfig = {
-  id: string
-  type: string
-  enabled?: boolean
-  apiKey?: string
-  apiSecret?: string
-  apiPassphrase?: string
-  orderbookKeyPattern?: string
-  settlementAsset?: string
-  fees?: ExchangeFees
-}
-
-export type ArbitrageOrderBookConfig = {
-  keyPattern: string
-  staleThresholdMs: number
-}
-
-export type ArbitrageRiskConfig = {
-  maxMarginLossRatio: number
-  liquidationBufferBps: number
-  forceCloseSpreadBps: number
-  maxHedgeImbalanceBps: number
-}
-
-export type ArbitrageRuntimeConfig = {
-  tokenListPath: string
-  checkIntervalMs: number
-  navReportIntervalMs: number
-  leverage: number
-  defaultOpenSpreadBps: number
-  defaultCloseSpreadBps: number
-  minCloseSpreadBps: number
-  closeSpreadDecayMinutes: number
-  defaultMinTradeSize: number
-  defaultTradeSize: number
-  defaultMaxNetPosition: number
-  defaultMaxNotionalUsd: number
-  maxHoldingMinutes: number
-  maxSimultaneousPositions: number
-  orderSizeUsd: number
-  orderBook: ArbitrageOrderBookConfig
-  risk: ArbitrageRiskConfig
+// Backpack 配置
+export type BackpackCfg = {
+  apiKey: string
+  apiSecret: string
 }
 
 export type TDefiConfig = {
@@ -80,8 +42,8 @@ export type TDefiConfig = {
   bot: { [key: string]: BotInfo }
   projectName: string
   pwd: string
-  exchanges?: ExchangeRuntimeConfig[]
-  arbitrage?: ArbitrageRuntimeConfig
+  asterCfg: AsterCfg
+  backpackCfg: BackpackCfg
 }
 
 export const defiConfig: TDefiConfig = JSON.parse(readFileSync(config.get('config'), 'utf-8'))

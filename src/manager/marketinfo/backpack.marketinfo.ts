@@ -6,12 +6,12 @@ import { BackpackPublicApi } from '../../libs/backpack/backpack.public.api.js';
 import { BackpackMarket } from '../../libs/backpack/backpack.types.js';
 import { TSMap } from '../../libs/tsmap.js';
 import { qtyFilterCache } from '../../common/cache/interval.cache.js';
-import { QtyFilter } from './maretinfo.type.js';
+import { TQtyFilter } from './maretinfo.type.js';
 
 const DEFAULT_MEMORY_TTL_SECONDS = 600; // 10 minutes
 const DEFAULT_REDIS_TTL_SECONDS = 3600; // 1 hour
 
-type SymbolRuleMap = TSMap<string, QtyFilter>;
+type SymbolRuleMap = TSMap<string, TQtyFilter>;
 
 type BackpackMarketInfo = BackpackMarket[];
 
@@ -34,7 +34,7 @@ export class BackpackMarketInfoMgr {
   /**
    * 获取单个永续合约交易对的交易规则
    */
-  static async getFutureSymbolRule(symbol: string): Promise<QtyFilter | undefined> {
+  static async getFutureSymbolRule(symbol: string): Promise<TQtyFilter | undefined> {
     const normalized = this.normalizeSymbol(symbol);
     const rules = await this.getAllFutureSymbolRules();
     return rules.get(normalized);
@@ -65,7 +65,7 @@ export class BackpackMarketInfoMgr {
    * 构建交易对到交易规则的映射表
    */
   static buildRuleMap(markets: BackpackMarketInfo): SymbolRuleMap {
-    const map: SymbolRuleMap = new TSMap<string, QtyFilter>();
+    const map: SymbolRuleMap = new TSMap<string, TQtyFilter>();
     markets.forEach((market) => {
       if (!this.isTradableFuture(market)) {
         return;
@@ -79,7 +79,7 @@ export class BackpackMarketInfoMgr {
   /**
    * 从市场信息生成单个交易对的交易规则
    */
-  private static buildRule(market: BackpackMarket): QtyFilter {
+  private static buildRule(market: BackpackMarket): TQtyFilter {
     const quantityFilter = market.filters?.quantity;
     const priceFilter = market.filters?.price;
 
@@ -90,7 +90,7 @@ export class BackpackMarketInfoMgr {
     const pricePrecision = this.computePrecisionFromStep(priceFilter?.tickSize);
     const qtyPrecision = this.computePrecisionFromStep(stepSize);
 
-    const result: QtyFilter = {
+    const result: TQtyFilter = {
       pricePrecision,
       qtyPrecision,
       minQty,

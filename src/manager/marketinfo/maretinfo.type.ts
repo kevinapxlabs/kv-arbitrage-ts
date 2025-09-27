@@ -1,4 +1,4 @@
-export interface QtyFilter {
+export interface TQtyFilter {
   pricePrecision: number;   // 价格精度
   qtyPrecision: number;     // 下单数量精度
   minQty: string;           // 最小下单数量

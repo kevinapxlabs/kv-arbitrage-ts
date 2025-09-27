@@ -6,13 +6,13 @@ import { AsterMarketApi } from '../../libs/aster/aster.market.api.js';
 import { AsterContractStatus } from '../../libs/aster/aster.enums.js';
 import { AsterExchangeFilter, AsterExchangeInfo, AsterSymbolInfo } from '../../libs/aster/aster.types.js';
 import { TSMap } from '../../libs/tsmap.js';
-import { QtyFilter } from './maretinfo.type.js';
+import { TQtyFilter } from './maretinfo.type.js';
 import { qtyFilterCache } from '../../common/cache/interval.cache.js';
 
 const DEFAULT_MEMORY_TTL_SECONDS = 600; // 10 minutes
 const DEFAULT_REDIS_TTL_SECONDS = 3600; // 1 hour
 
-type SymbolRuleMap = TSMap<string, QtyFilter>;
+type SymbolRuleMap = TSMap<string, TQtyFilter>;
 
 
 export class AsterMarketInfoMgr {
@@ -20,11 +20,11 @@ export class AsterMarketInfoMgr {
   /**
    * 获取 Aster 永续合约全部交易规则（先读内存缓存）
    */
-  static async getAllFutureSymbolRules(): Promise<TSMap<string, QtyFilter>> {
+  static async getAllFutureSymbolRules(): Promise<TSMap<string, TQtyFilter>> {
     const key = `FUTURE:QtyFilter:${EExchange.Aster}`
     const qtyValue = qtyFilterCache.get(key)
     if (qtyValue) {
-      return qtyValue as TSMap<string, QtyFilter>;
+      return qtyValue as TSMap<string, TQtyFilter>;
     }
     const info = await this.fetchFutureMarketInfo();
     const rules = this.buildRuleMap(info);
@@ -35,7 +35,7 @@ export class AsterMarketInfoMgr {
   /**
    * 获取单个 Aster 永续合约的交易规则
    */
-  static async getFutureSymbolRule(symbol: string): Promise<QtyFilter | undefined> {
+  static async getFutureSymbolRule(symbol: string): Promise<TQtyFilter | undefined> {
     const normalized = this.normalizeSymbol(symbol);
     const rules = await this.getAllFutureSymbolRules();
     return rules.get(normalized);
@@ -66,7 +66,7 @@ export class AsterMarketInfoMgr {
    * 根据交易所返回的交易对信息构建规则映射
    */
   static buildRuleMap(info: AsterExchangeInfo): SymbolRuleMap {
-    const map: SymbolRuleMap = new TSMap<string, QtyFilter>();
+    const map: SymbolRuleMap = new TSMap<string, TQtyFilter>();
     info.symbols.forEach((symbolInfo) => {
       if (symbolInfo.status !== AsterContractStatus.TRADING) {
         return;
@@ -80,7 +80,7 @@ export class AsterMarketInfoMgr {
   /**
    * 将单个交易对信息转换为数量过滤规则
    */
-  private static buildRule(symbolInfo: AsterSymbolInfo): QtyFilter {
+  private static buildRule(symbolInfo: AsterSymbolInfo): TQtyFilter {
     const lotFilter = this.findFilter(symbolInfo.filters, 'LOT_SIZE');
     const marketLotFilter = this.findFilter(symbolInfo.filters, 'MARKET_LOT_SIZE');
     const notionalFilter = this.findFilter(symbolInfo.filters, 'MIN_NOTIONAL');

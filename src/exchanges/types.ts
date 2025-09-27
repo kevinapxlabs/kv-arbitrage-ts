@@ -1,136 +1,73 @@
-export type ExchangeId = string
+import { EExchange } from "../common/exchange.enum.js";
 
-export type ExchangeType = 'aster' | 'backpack' | 'mock'
-
-export type TradeSide = 'BUY' | 'SELL'
-
-export interface TokenConfig {
+export type TKVPosition = {
+  exchangeName: EExchange
   symbol: string
-  base: string
-  quote: string
-  minTradeSize: number
-  tradeSize: number
-  maxNetPosition: number
-  maxNotionalUsd: number
-  openSpreadBps?: number
-  closeSpreadBps?: number
-  minCloseSpreadBps?: number
-  closeSpreadDecayMinutes?: number
-  exchangeSymbols: Record<ExchangeId, string>
-  instrumentIds?: Record<ExchangeId, number>
+  exchangeToken: string
+  leverage: string
+  positionAmt: string              // 持仓数量
+  notional: string                 // 按baseToken计算的持仓价值
 }
 
-export interface OrderBookLevel {
-  price: number
-  size: number
+export type TBNAccountInfo = {
+  initialMarginFraction: number
+  marginFraction: number
+  equity: string
+  cashBalance: string                 // 跟交易所的现金借贷余额，若为正，表示赚取的资费，若为负，表示向交易所借贷金额
+  marginBalance: string               // marginBalance = walletBalance + unrealizedProfit
+  basedAssetBalance: string          // 资费收益资产数量，币本位计，例如 USDT本位, BTC本位
 }
 
-export interface OrderBookQuote {
-  bestBid?: OrderBookLevel
-  bestAsk?: OrderBookLevel
-  updatedAt: number
+export type TBybitAccountInfo = {
+  imr: string
+  mmr: string
+  initialMargin: string
+  equity: string
+  cashBalance: string                 // 跟交易所的现金借贷余额，若为正，表示赚取的资费，若为负，表示向交易所借贷金额
+  marginBalance: string               // marginBalance = walletBalance + unrealizedProfit
+  basedAssetBalance: string          // 资费收益资产数量，币本位计，例如 USDT本位, BTC本位
 }
 
-export interface ExchangeOrderBookQuote {
-  exchangeId: ExchangeId
-  symbol: string
-  quote: OrderBookQuote
+export type TBitgetAccountInfo = {
+  unionAvailable: string
+  unionTotalMargin: string
+  unionMMR: string
+  equity: string
+  cashBalance: string                 // 跟交易所的现金借贷余额，若为正，表示赚取的资费，若为负，表示向交易所借贷金额
+  marginBalance: string               // marginBalance = walletBalance + unrealizedProfit
+  basedAssetBalance: string          // 资费收益资产数量，币本位计，例如 USDT本位, BTC本位
 }
 
-export interface SpreadOpportunity {
-  symbol: string
-  token: TokenConfig
-  buyExchangeId: ExchangeId
-  sellExchangeId: ExchangeId
-  buySymbol: string
-  sellSymbol: string
-  buyPrice: number
-  sellPrice: number
-  spread: number
-  spreadBps: number
-  executableQuantity: number
-  timestamp: number
+export type TLTPBNAccountInfo = {
+  uniMMR: string
+  mmr: string
+  equity: string
+  marginValue: string
+  maintainMargin: string
+  availableMargin: string
+  cashBalance: string                 // 跟交易所的现金借贷余额，若为正，表示赚取的资费，若为负，表示向交易所借贷金额
+  marginBalance: string               // marginBalance = walletBalance + unrealizedProfit
+  basedAssetBalance: string          // 资费收益资产数量，币本位计，例如 USDT本位, BTC本位
 }
 
-export type ExecutionReason = 'OPEN' | 'CLOSE' | 'RISK_REDUCTION'
-
-export interface ExecutionRequest {
-  exchangeId: ExchangeId
-  symbol: string
-  side: TradeSide
-  quantity: number
-  reason: ExecutionReason
-  referenceId?: string
+export type TAccountInfo = {
+  totalNetEquity: string
+  totalPositiveNotional: string    // 正向持仓总价值
+  // binance
+  bnAccountInfo: TBNAccountInfo | null
+  // bybit
+  bybitAccountInfo: TBybitAccountInfo | null
+  // bitget
+  bitgetAccountInfo: TBitgetAccountInfo | null
+  // ltp
+  ltpBNAccountInfo: TLTPBNAccountInfo | null
 }
 
-export interface ExecutionReport {
-  success: boolean
-  exchangeId: ExchangeId
-  symbol: string
-  side: TradeSide
-  requestedQuantity: number
-  filledQuantity: number
-  averagePrice: number
-  feePaid: number
-  timestamp: number
-  referenceId?: string
-  error?: string
-  raw?: unknown
+export type TQueryOrder = {
+  isCompleted: boolean
+  result: any
 }
 
-export type PositionStatus = 'OPEN' | 'CLOSING' | 'CLOSED'
-
-export interface PositionLeg {
-  exchangeId: ExchangeId
-  symbol: string
-  side: TradeSide
-  quantity: number
-  remainingQuantity: number
-  averagePrice: number
-  leverage: number
-  openedAt: number
-  lastUpdate: number
-}
-
-export interface HedgePosition {
-  id: string
-  symbol: string
-  base: string
-  quote: string
-  token: TokenConfig
-  longLeg: PositionLeg
-  shortLeg: PositionLeg
-  entrySpreadBps: number
-  openedAt: number
-  status: PositionStatus
-  realizedPnl: number
-  lastUpdate: number
-  unrealizedPnl?: number
-}
-
-export interface PositionExposureSummary {
-  symbol: string
-  base: string
-  totalLong: number
-  totalShort: number
-  netBase: number
-  notionalUsd: number
-  unrealizedPnlUsd: number
-  realizedPnlUsd: number
-  positions: HedgePosition[]
-}
-
-export interface RiskSignal {
-  type: 'FORCE_REDUCE' | 'ALERT'
-  severity: 'INFO' | 'WARN' | 'CRITICAL'
-  message: string
-  positionId?: string
-}
-
-export interface NavSnapshot {
-  timestamp: number
-  totalRealizedPnlUsd: number
-  totalUnrealizedPnlUsd: number
-  totalNotionalUsd: number
-  positions: PositionExposureSummary[]
+export type TCancelOrder = {
+  orderId: string
 }
