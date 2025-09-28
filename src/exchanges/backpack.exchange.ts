@@ -1,21 +1,23 @@
 import { blogger } from '../common/base/logger.js'
 import { EExchange, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import type { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
-import type { ExchangeAdapter } from './exchange-adapter.js'
-import type { TAccountInfo, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
+import type { ExchangeAdapter } from './exchange.adapter.js'
+import type { TAccountInfo, TBNKey, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
 import {
   BackpackAccountApi,
-  BackpackPublicApi,
   BackpackTradingApi
 } from '../libs/backpack/index.js'
 import type {
   BackpackFuturePositionWithMargin,
-  BackpackMarket,
   BackpackOrderStatus
 } from '../libs/backpack/backpack.types.js'
 import { BackpackMarketInfoMgr } from '../manager/marketinfo/backpack.marketinfo.js'
+import { TArbitrageConfig } from '../arbitrage/arbitrage.config.js'
+import { defiConfig } from '../config/config.js'
+import { getKeyInfo } from '../utils/bnKey.js'
+import { EPositionDescrease } from '../common/types/exchange.type.js'
+import { TRiskDataInfo } from '../arbitrage/type.js'
 
-const DEFAULT_SETTLEMENT = 'USDC'
 const COMPLETED_ORDER_STATUSES = new Set<BackpackOrderStatus>([
   'Cancelled',
   'Expired',
@@ -29,23 +31,29 @@ interface BackpackOrderIdentifier {
 }
 
 export class BackpackExchangeAdapter implements ExchangeAdapter {
+  readonly traceId: string
   readonly id = EExchangeId.Backpack
   readonly exchangeName = EExchange.Backpack
   readonly settlementAsset = 'USDC'
 
-  private readonly accountApi: BackpackAccountApi
-  private readonly tradingApi: BackpackTradingApi
-  private leverageConfigured = false
+  readonly arbitrageConfig: TArbitrageConfig
 
-  constructor(apiKey: string, apiSecret: string) {
-    this.accountApi = new BackpackAccountApi({
-      apiKey: apiKey,
-      privateKey: apiSecret
-    })
-    this.tradingApi = new BackpackTradingApi({
-      apiKey: apiKey,
-      privateKey: apiSecret
-    })
+  constructor(traceId: string, arbitrageConfig: TArbitrageConfig) {
+    this.traceId = traceId
+    this.arbitrageConfig = arbitrageConfig
+  }
+
+  isIncrease(riskData: TRiskDataInfo): boolean {
+    return false
+  }
+
+  isDecrease(riskData: TRiskDataInfo): EPositionDescrease {
+    return EPositionDescrease.None
+  } 
+
+  private getKeyInfo(): TBNKey {
+    const backpackCfg = defiConfig.backpackCfg
+    return getKeyInfo(backpackCfg.apiKey, backpackCfg.apiSecret, '', defiConfig.pwd)
   }
 
   generateExchangeSymbol(exchangeToken: string): string {
@@ -68,15 +76,18 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   }
 
   async getAccountInfo(): Promise<TAccountInfo> {
+    const keyInfo = this.getKeyInfo()
+    const accountApi = new BackpackAccountApi({
+      apiKey: keyInfo.apiKey,
+      privateKey: keyInfo.secret
+    })
     try {
-      const summary = await this.accountApi.getMarginSummary()
+      const summary = await accountApi.getMarginSummary()
       return {
         totalNetEquity: summary.netEquity,
         totalPositiveNotional: summary.netExposureFutures ?? '0',
-        bnAccountInfo: null,
-        bybitAccountInfo: null,
-        bitgetAccountInfo: null,
-        ltpBNAccountInfo: null
+        bpAccountInfo: null,
+        asterAccountInfo: null
       }
     } catch (error) {
       blogger.error('backpack getAccountInfo failed', error)
@@ -85,8 +96,13 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   }
 
   async getPositions(): Promise<TKVPosition[]> {
+    const keyInfo = this.getKeyInfo()
+    const tradingApi = new BackpackTradingApi({
+      apiKey: keyInfo.apiKey,
+      privateKey: keyInfo.secret
+    })
     try {
-      const positions = await this.tradingApi.getPositions()
+      const positions = await tradingApi.getPositions()
       return positions
         .filter((position) => Number(position.netQuantity) !== 0)
         .map((position) => this.toKVPosition(position))
@@ -96,23 +112,12 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     }
   }
 
-  async ensureLeverage(symbol: string, leverage: number): Promise<void> {
-    if (this.leverageConfigured) {
-      return
-    }
-    try {
-      await this.accountApi.updateAccountSettings({ leverageLimit: leverage.toString() })
-      this.leverageConfigured = true
-    } catch (error) {
-      blogger.error('backpack ensureLeverage failed', { symbol, leverage, error })
-      throw this.ensureError(error)
-    }
-  }
+  async ensureLeverage(symbol: string, leverage: number): Promise<void> {}
 
   async getQtyFilter(symbol: string): Promise<TQtyFilter | undefined> {
     const normalized = this.normalizeSymbol(symbol)
     try {
-      const rule = await BackpackMarketInfoMgr.getFutureSymbolRule(symbol)
+      const rule = await BackpackMarketInfoMgr.getFutureSymbolRule(normalized)
       if (!rule) {
         return undefined
       }
@@ -124,8 +129,13 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   }
 
   async placeMarketOrder(symbol: string, side: EKVSide, quantity: string): Promise<string> {
+    const keyInfo = this.getKeyInfo()
+    const tradingApi = new BackpackTradingApi({
+      apiKey: keyInfo.apiKey,
+      privateKey: keyInfo.secret
+    })
     try {
-      const response = await this.tradingApi.submitOrder({
+      const response = await tradingApi.submitOrder({
         symbol,
         side: this.toOrderSide(side),
         orderType: 'Market',
@@ -140,8 +150,13 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   }
 
   async placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string): Promise<string> {
+    const keyInfo = this.getKeyInfo()
+    const tradingApi = new BackpackTradingApi({
+      apiKey: keyInfo.apiKey,
+      privateKey: keyInfo.secret
+    })
     try {
-      const response = await this.tradingApi.submitOrder({
+      const response = await tradingApi.submitOrder({
         symbol,
         side: this.toOrderSide(side),
         orderType: 'Limit',
@@ -158,8 +173,13 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
 
   async queryOrder(symbol: string, orderId: string): Promise<TQueryOrder> {
     const identifier = this.parseOrderIdentifier(orderId)
+    const keyInfo = this.getKeyInfo()
+    const tradingApi = new BackpackTradingApi({
+      apiKey: keyInfo.apiKey,
+      privateKey: keyInfo.secret
+    })
     try {
-      const response = await this.tradingApi.getOrder({ symbol, ...identifier })
+      const response = await tradingApi.getOrder({ symbol, ...identifier })
       return {
         isCompleted: COMPLETED_ORDER_STATUSES.has(response.status),
         result: response
@@ -172,8 +192,13 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
 
   async cancelOrder(symbol: string, orderId: string): Promise<TCancelOrder> {
     const identifier = this.parseOrderIdentifier(orderId)
+    const keyInfo = this.getKeyInfo()
+    const tradingApi = new BackpackTradingApi({
+      apiKey: keyInfo.apiKey,
+      privateKey: keyInfo.secret
+    })
     try {
-      const response = await this.tradingApi.cancelOrder({ symbol, ...identifier })
+      const response = await tradingApi.cancelOrder({ symbol, ...identifier })
       return { orderId: response.id ?? orderId }
     } catch (error) {
       blogger.error('backpack cancelOrder failed', { symbol, orderId, error })

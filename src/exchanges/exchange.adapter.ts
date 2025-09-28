@@ -1,4 +1,6 @@
+import { TRiskDataInfo } from '../arbitrage/type.js'
 import { EExchange, EExchangeId, EKVSide } from '../common/exchange.enum.js'
+import { EPositionDescrease } from '../common/types/exchange.type.js'
 import { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
 import { TAccountInfo, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
 
@@ -9,9 +11,20 @@ export interface ExchangeAccountLimits {
 
 // 定义具体交易所适配器需要实现的能力
 export interface ExchangeAdapter {
+  readonly traceId: string
   readonly id: EExchangeId
   readonly exchangeName: EExchange
   readonly settlementAsset: string
+
+  /* 检查是否需要加仓
+    @param riskData: 风险数据
+    @returns 是否需要加仓 true: 需要加仓, false: 不需要加仓
+  */
+    isIncrease(riskData: TRiskDataInfo): boolean
+
+    // 检查是否需要减仓
+    isDecrease(riskData: TRiskDataInfo): EPositionDescrease
+
   /* 生成本交易所币对
     @param exchangeToken: 交易所币对
     @returns 交易所币对，如 BINANCE_PERP_BTCUSDT_USDT

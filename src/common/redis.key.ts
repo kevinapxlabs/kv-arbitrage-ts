@@ -18,4 +18,8 @@ export class RedisKeyMgr {
   static MarketInfoKey(exchange: EExchange) {
     return `KV:${exchange}:MARKETINFO}`;
   }
+
+  static arbitrageConfigKey(key: string) {
+    return `APX:${key.toUpperCase()}:ARBITRAGE:CONFIG`
+  }
 }

@@ -42,6 +42,7 @@ export type TDefiConfig = {
   bot: { [key: string]: BotInfo }
   projectName: string
   pwd: string
+  exchangeIdList: number[]
   asterCfg: AsterCfg
   backpackCfg: BackpackCfg
 }

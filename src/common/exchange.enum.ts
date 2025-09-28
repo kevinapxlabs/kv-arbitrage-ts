@@ -28,3 +28,13 @@ export enum EExchangeId {
   Backpack = 25,
   Aster = 27
 }
+
+// 系统下单原因
+export enum EOrderReason {
+  DEFAULT = 0,
+  PROFIT_LOCKED = 1,
+  POSITION_ADJUSTMENT = 2,
+  DECREASE_POSITION = 3,
+  REDUCE_POSITION = 4,
+  REBALANCE = 5,
+}
