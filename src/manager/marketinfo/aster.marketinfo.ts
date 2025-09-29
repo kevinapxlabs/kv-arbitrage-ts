@@ -110,7 +110,7 @@ export class AsterMarketInfoMgr {
       qtyPrecision: symbolInfo.quantityPrecision,
       minQty,
       maxQty,
-      qtyStep: stepSize,
+      stepSize,
       minNotional,
     };
   }

@@ -1,5 +1,5 @@
 import { TRiskDataInfo } from '../arbitrage/type.js'
-import { EExchange, EExchangeId, EKVSide } from '../common/exchange.enum.js'
+import { EExchange, EExchangeCexId, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import { EPositionDescrease } from '../common/types/exchange.type.js'
 import { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
 import { TAccountInfo, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
@@ -13,6 +13,7 @@ export interface ExchangeAccountLimits {
 export interface ExchangeAdapter {
   readonly traceId: string
   readonly id: EExchangeId
+  readonly cexId: EExchangeCexId
   readonly exchangeName: EExchange
   readonly settlementAsset: string
 
@@ -52,17 +53,23 @@ export interface ExchangeAdapter {
     @returns 下单数量条件
   */
   getQtyFilter(symbol: string): Promise<TQtyFilter | undefined>
+  // 下市价单
   placeMarketOrder(symbol: string, side: EKVSide, quantity: string): Promise<string>
+  // 下限价单
   placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string): Promise<string>
+  // 查询订单
   queryOrder(symbol: string, orderId: string): Promise<TQueryOrder>
+  // 取消订单
   cancelOrder(symbol: string, orderId: string): Promise<TCancelOrder>
-}
+  /*
+    @param symbol: 交易所符号 如 BTCUSDT
+    @returns 当前资费数据
+  */
+  getCurrentFundingFee(symbol: string): Promise<BigNumber>
 
-// 按步长向下取整，避免超过交易所精度限制
-export const roundQuantity = (quantity: number, step = 0.0001): number => {
-  if (step <= 0) {
-    return quantity
-  }
-  const precision = Math.round(1 / step)
-  return Math.floor(quantity * precision) / precision
+   /*
+    @param symbol: 交易所符号 如 BTCUSDT
+    @returns 资费间隔时间
+  */
+  getSymbolInterval(symbol: string): Promise<number>
 }

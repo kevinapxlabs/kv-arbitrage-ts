@@ -1,5 +1,5 @@
 import { blogger } from '../common/base/logger.js'
-import { EExchange, EExchangeId, EKVSide } from '../common/exchange.enum.js'
+import { EExchange, EExchangeCexId, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import type { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
 import type { ExchangeAdapter } from './exchange.adapter.js'
 import type { TAccountInfo, TBNKey, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
@@ -17,6 +17,7 @@ import { defiConfig } from '../config/config.js'
 import { getKeyInfo } from '../utils/bnKey.js'
 import { EPositionDescrease } from '../common/types/exchange.type.js'
 import { TRiskDataInfo } from '../arbitrage/type.js'
+import { ExchangeDataMgr } from '../arbitrage/exchange.data.js'
 
 const COMPLETED_ORDER_STATUSES = new Set<BackpackOrderStatus>([
   'Cancelled',
@@ -33,6 +34,7 @@ interface BackpackOrderIdentifier {
 export class BackpackExchangeAdapter implements ExchangeAdapter {
   readonly traceId: string
   readonly id = EExchangeId.Backpack
+  readonly cexId = EExchangeCexId.Backpack
   readonly exchangeName = EExchange.Backpack
   readonly settlementAsset = 'USDC'
 
@@ -204,6 +206,11 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
       blogger.error('backpack cancelOrder failed', { symbol, orderId, error })
       throw this.ensureError(error)
     }
+  }
+
+  async getCurrentFundingFee(symbol: string): Promise<BigNumber> {
+    const fundingFee = await ExchangeDataMgr.getFundingFee(EExchange.Backpack, symbol)
+    return fundingFee ? BigNumber(fundingFee) : BigNumber(0)
   }
 
   private normalizeSymbol(symbol: string): string {

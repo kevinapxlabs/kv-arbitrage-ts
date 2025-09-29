@@ -95,7 +95,7 @@ export class BackpackMarketInfoMgr {
       qtyPrecision,
       minQty,
       maxQty,
-      qtyStep: stepSize,
+      stepSize,
     };
 
     return result;

@@ -8,6 +8,13 @@ export type TExchangeOrderbook = {
   asks: string[][]      // 卖单
 }
 
+// 资费数据
+export type TExchangeFundingFee = {
+  rate: string               // 资费，如0.0001
+  nextFundingTime: number,   // 下轮资费时间戮 ms, 如1717171717171
+  updatetime: number         // 行情生成时的时间戮 s
+}
+
 export type TExchangeMarkprice = {
   indexPrice: string    // 指数价格
   markPrice: string     // 标记价格
@@ -32,6 +39,20 @@ export type TRebalanceOrder = {
   symbol: string
   side: EKVSide
   quantity: string
+}
+
+// 资费数据
+export type TCoinData = {
+  chainToken: string             // 合约币种名称，如PEPE, ETH, USDT
+  baseExchange: EExchange           // 交易所名称，如BINANCE, BYBIT, BITGET
+  baseExchangeIndex: number     // 交易所索引，如0, 1, 2
+  baseExchangeRate: BigNumber   // 交易所资费
+  baseExchangeToken: string     // 交易所币种信息，如1000PEPE
+  quoteExchange: EExchange      // 交易所名称，如BINANCE, BYBIT, BITGET
+  quoteExchangeIndex: number    // 交易所索引，如0, 1, 2
+  quoteExchangeRate: BigNumber   // 交易所资费
+  quoteExchangeToken: string     // 交易所币种信息，如KPEPE
+  total: BigNumber               // 资费差值
 }
 
 // token qty

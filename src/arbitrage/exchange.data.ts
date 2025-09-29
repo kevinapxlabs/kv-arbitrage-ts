@@ -2,7 +2,7 @@ import { BigNumber } from "bignumber.js"
 import { blogger } from "../common/base/logger.js";
 import { EExchange } from "../common/exchange.enum.js";
 import { rdsClient } from "../common/db/redis.js";
-import { TExchangeMarkprice, TExchangeOrderbook } from "../common/types/exchange.type.js";
+import { TExchangeFundingFee, TExchangeMarkprice, TExchangeOrderbook } from "../common/types/exchange.type.js";
 import { RedisKeyMgr } from "../common/redis.key.js";
 import { TExchangeTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js";
 import { ExchangeAdapter } from "../exchanges/exchange.adapter.js";
@@ -81,5 +81,23 @@ export class ExchangeDataMgr {
       return indexPrice
     }
     return
+  }
+
+  /*
+  * 获取某交易所指定symbol的funding fee
+  * @param exchange 交易所 如 BINANCE
+  * @param symbol 交易对 如 BTCUSDT
+  * @returns funding fee
+  */
+  static async getFundingFee(exchange: EExchange, symbol: string): Promise<BigNumber | undefined> {
+    const tickerKey = RedisKeyMgr.FundingRateKey(exchange, symbol)
+    const tickerStr = await rdsClient.get(tickerKey)
+    if (!tickerStr) {
+      blogger.error(`getFundingFee, exchange: ${exchange}, symbol: ${symbol}, key: ${tickerKey} not found`)
+      return
+    }
+    const ticker = JSON.parse(tickerStr) as TExchangeFundingFee
+    const fundingFee = BigNumber(ticker.rate)
+    return fundingFee
   }
 }
