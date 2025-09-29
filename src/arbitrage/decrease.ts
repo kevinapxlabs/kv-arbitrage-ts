@@ -22,12 +22,16 @@ export class DecreaseMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
   arbitrageConfig: TArbitrageConfig
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
+  private readonly exchangeDataMgr: ExchangeDataMgr
+  private readonly tokenQtyMgr: TokenQtyMgr
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
     super(traceId)
     this.exchangeIndexMgr = exchangeIndexMgr
     this.arbitrageConfig = arbitrageConfig
     this.exchangeTokenInfoMap = exchangeTokenInfoMap
+    this.exchangeDataMgr = new ExchangeDataMgr(traceId)
+    this.tokenQtyMgr = new TokenQtyMgr(traceId, this.exchangeIndexMgr)
   }
 
   async toTg(orderParams: TOrderParams[]) {
@@ -62,86 +66,98 @@ export class DecreaseMgr extends ArbitrageBase {
     feeData: TCoinData,
     percent?: number
   ): Promise<TOrderParams | undefined> {
-    const chainToken = feeData.chainToken
-    let quantity: BigNumber
-    const positionAmt = btPosition.positionAmt
-    // 1. 如果持仓方向相同，则不减仓
-    if (BigNumber(positionAmt).multipliedBy(qtPosition.positionAmt).gte(0)) {
-      // 如果持仓方向相反，则不减仓
+    const {
+      chainToken,
+      baseExchangeIndex,
+      quoteExchangeIndex,
+      baseExchangeToken,
+      quoteExchangeToken,
+      baseExchange
+    } = feeData
+
+    const basePositionAmt = BigNumber(btPosition.positionAmt)
+    const quotePositionAmt = BigNumber(qtPosition.positionAmt)
+    if (basePositionAmt.multipliedBy(quotePositionAmt).gte(0)) {
       blogger.info(`${this.traceId} ${trace2}, btPosition: ${btPosition.positionAmt}, qtPosition: ${qtPosition.positionAmt}, position is the same, not decrease position`)
       return
     }
-    const positionAmtAbs = BigNumber(positionAmt).abs()
-    // 减仓时与持仓方向相反
-    const currentSide = UtilsMgr.getSideByPositionAmt(positionAmt)
+
+    const positionAmtAbs = basePositionAmt.abs()
+    const currentSide = UtilsMgr.getSideByPositionAmt(btPosition.positionAmt)
     const side = currentSide === EKVSide.LONG ? EKVSide.SHORT : EKVSide.LONG
 
-    // 2. 获取orderbook
-    const baseExchange = this.exchangeIndexMgr.exchangeList[feeData.baseExchangeIndex]
-    const quoteExchange = this.exchangeIndexMgr.exchangeList[feeData.quoteExchangeIndex]
-    const baseExchangeToken = feeData.baseExchangeToken
-    const quoteExchangeToken = feeData.quoteExchangeToken
-    const baseSymbol = baseExchange.generateOrderbookSymbol(baseExchangeToken)
-    const exchangeDataMgr = new ExchangeDataMgr(this.traceId)
-    const orderbook = await exchangeDataMgr.getOrderBook(baseExchange.exchangeName, baseSymbol)
+    const baseAdapter = this.exchangeIndexMgr.exchangeList[baseExchangeIndex]
+    const quoteAdapter = this.exchangeIndexMgr.exchangeList[quoteExchangeIndex]
+    const baseSymbol = baseAdapter.generateOrderbookSymbol(baseExchangeToken)
+    const orderbook = await this.exchangeDataMgr.getOrderBook(baseAdapter.exchangeName, baseSymbol)
     if (!orderbook) {
-      blogger.info(`${this.traceId} ${trace2}, orderbook ${baseSymbol} not found, exchange: ${feeData.baseExchange}`)
+      blogger.info(`${this.traceId} ${trace2}, orderbook ${baseSymbol} not found, exchange: ${baseExchange}`)
       return
     }
-    const price = side === EKVSide.LONG ? orderbook.bids[0][0] : orderbook.asks[0][0]
-    // 3. 获取交易所下单限制数据
-    const tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
-    const tokenQty = await tokenQtyMgr.getMinQtyDecimal(chainToken, this.exchangeTokenInfoMap)
+
+    const priceLevels = side === EKVSide.LONG ? orderbook.bids : orderbook.asks
+    if (!priceLevels?.length || priceLevels[0].length === 0) {
+      blogger.info(`${this.traceId} ${trace2}, orderbook ${baseSymbol} missing ${side === EKVSide.LONG ? 'bids' : 'asks'}, exchange: ${baseExchange}`)
+      return
+    }
+
+    const price = BigNumber(priceLevels[0][0])
+    if (!price.isFinite() || price.lte(0)) {
+      blogger.info(`${this.traceId} ${trace2}, invalid price ${priceLevels[0][0]} from ${baseSymbol}, exchange: ${baseExchange}`)
+      return
+    }
+
+    const tokenQty = await this.tokenQtyMgr.getMinQtyDecimal(chainToken, this.exchangeTokenInfoMap)
     if (!tokenQty) {
       blogger.info(`${this.traceId} ${trace2}, no token qty, not decrease position`)
       return
     }
-    // 4. 非激烈减仓时，需要判断价格差
-    if (!percent) {
-      const priceDelta = await this.getPriceDelta(trace2, side, baseExchangeToken, baseExchange, quoteExchangeToken, quoteExchange)
-      if (!priceDelta) {
+
+    if (percent === undefined) {
+      const priceDelta = await this.getPriceDelta(trace2, side, baseExchangeToken, baseAdapter, quoteExchangeToken, quoteAdapter)
+      if (priceDelta === undefined) {
         blogger.error(`${this.traceId} ${trace2}, decrease position failed, no price decimal`)
         return
       }
-      // 价格差小于阈值，则不减仓
       if (priceDelta < this.arbitrageConfig.DECREASE_PRICE_DELTA_BPS) {
         blogger.info(`${this.traceId} ${trace2}, decrease position failed, price delta: ${priceDelta} less than ${this.arbitrageConfig.DECREASE_PRICE_DELTA_BPS}`)
         return
       }
       blogger.info(`${this.traceId} ${trace2} descrease position price delta ok, price delta: ${priceDelta} greater than ${this.arbitrageConfig.DECREASE_PRICE_DELTA_BPS}`)
     }
-    // 5. 计算减仓数量
-    quantity = ParamsMgr.USD_AMOUNT_EVERY_ORDER.dividedBy(price)
-    if (percent && percent > 0 && percent <= 0.2) {
-      // 最多进行20%的减仓
-      const quantity1 = BigNumber(positionAmtAbs).multipliedBy(percent)
-      const quantity2 = BigNumber(this.arbitrageConfig.REBALANCE_MAX_USD_AMOUNT).dividedBy(price)
-      // 取两者中的较小值
-      const _quantity = quantity1.lt(quantity2) ? quantity1 : quantity2
-      if (BigNumber(_quantity).gt(BigNumber(quantity))) {
-        quantity = BigNumber(_quantity)
+
+    let quantity = ParamsMgr.USD_AMOUNT_EVERY_ORDER.dividedBy(price)
+    if (percent !== undefined && percent > 0 && percent <= 0.2) {
+      const quantityByPercent = positionAmtAbs.multipliedBy(percent)
+      const quantityByCap = BigNumber(this.arbitrageConfig.REBALANCE_MAX_USD_AMOUNT).dividedBy(price)
+      const preferredQuantity = BigNumber.min(quantityByPercent, quantityByCap)
+      if (preferredQuantity.gt(quantity)) {
+        quantity = preferredQuantity
       }
-      blogger.info(`${this.traceId} ${trace2}, decrease position use percent: ${percent}, quantity: ${quantity}, _quantity: ${_quantity}, quantity1: ${quantity1}, quantity2: ${quantity2}`)
+      blogger.info(`${this.traceId} ${trace2}, decrease position use percent: ${percent}, quantity: ${quantity}, quantityByPercent: ${quantityByPercent}, quantityByCap: ${quantityByCap}`)
     }
-    if (BigNumber(quantity).eq(0)) {
-      blogger.info(`${this.traceId} ${trace2}, decrease position quantity: ${quantity} equal zero, positionAmt: ${positionAmt}`)
+
+    if (!quantity.isFinite() || quantity.lte(0)) {
+      blogger.info(`${this.traceId} ${trace2}, decrease position quantity: ${quantity} less or equal zero, btPosition: ${btPosition.positionAmt}`)
       return
     }
-    // 6. 如果减仓数量大于持仓数量的一半时，则减仓数量为持仓数量
-    const minPositionAmt = BigNumber.min(BigNumber(btPosition.positionAmt).abs(), BigNumber(qtPosition.positionAmt).abs())
-    if (BigNumber(quantity).multipliedBy(2).gt(minPositionAmt)) {
+
+    const minPositionAmt = BigNumber.min(positionAmtAbs, quotePositionAmt.abs())
+    if (quantity.multipliedBy(2).gt(minPositionAmt)) {
       blogger.info(`${this.traceId} ${trace2}, decrease position quantity: ${quantity} greater than 2 * positionAmt(${minPositionAmt}), btPosition: ${btPosition.positionAmt}, qtPosition: ${qtPosition.positionAmt}`)
       quantity = minPositionAmt
     }
+
     const validQuantity = calculateValidQuantity(quantity, tokenQty.minQty, tokenQty.stepSize, null)
     if (validQuantity <= 0) {
       blogger.info(`${this.traceId} ${trace2}, decrease position, validQuantity: ${validQuantity} is 0, not decrease position`)
       return
     }
+
     return {
       chainToken,
-      baseExchange,
-      quoteExchange,
+      baseExchange: baseAdapter,
+      quoteExchange: quoteAdapter,
       baseExchangeToken,
       quoteExchangeToken,
       side,
@@ -161,14 +177,22 @@ export class DecreaseMgr extends ArbitrageBase {
       blogger.info(`${this.traceId} no funding fee data, no decrease position`)
       return
     }
-    const promises = []
+    const ordersToCreate: TOrderParams[] = []
+    // 预先聚合资费数据，避免重复过滤
+    const fundingFeeByChainToken = new Map<string, TCoinData[]>()
+    for (const feeItem of fundingFeeData) {
+      if (!fundingFeeByChainToken.has(feeItem.chainToken)) {
+        fundingFeeByChainToken.set(feeItem.chainToken, [])
+      }
+      fundingFeeByChainToken.get(feeItem.chainToken)!.push(feeItem)
+    }
     // 1. 首先对资费亏损的仓位进行减仓
     const chainTokenPositionMap = riskData.chainTokenPositionMap
-    for(const chainToken of chainTokenPositionMap.keys()) {
-      const feeData = fundingFeeData.filter(feeData => feeData.chainToken === chainToken)
+    for (const chainToken of chainTokenPositionMap.keys()) {
+      const feeData = fundingFeeByChainToken.get(chainToken)
       const chainTokenPosition = chainTokenPositionMap.get(chainToken)
-      if (feeData.length > 0 && chainTokenPosition) {
-        for(const feeItem of feeData) {
+      if (feeData?.length && chainTokenPosition) {
+        for (const feeItem of feeData) {
           const side1 = UtilsMgr.getSideByTotalAPR(feeItem.total)
           const btPosition = chainTokenPosition.positions[feeItem.baseExchangeIndex]
           const qtPosition = chainTokenPosition.positions[feeItem.quoteExchangeIndex]
@@ -180,7 +204,7 @@ export class DecreaseMgr extends ArbitrageBase {
           if (side1 !== side2) {
             const orderParams = await this._decreasePosition(trace2, btPosition, qtPosition, feeItem, percent)
             if (orderParams) {
-              promises.push(orderParams)
+              ordersToCreate.push(orderParams)
             }
           } else {
             blogger.info(`${this.traceId} ${trace2}, no need decrease position, total: ${feeItem.total}, side1: ${side1}, side2: ${side2}`)
@@ -188,11 +212,11 @@ export class DecreaseMgr extends ArbitrageBase {
         }
       }
     }
-    blogger.info(`${this.traceId} first fund loss promises: ${JSON.stringify(promises)}`)
+    blogger.info(`${this.traceId} first fund loss promises: ${JSON.stringify(ordersToCreate)}`)
     // 2. 其次对资费盈利的仓位按total从小到大进行减仓
     // 按照total从小到大排序
-    if (promises.length === 0) {
-      const feeDataAsc = fundingFeeData.sort((a, b) => {
+    if (ordersToCreate.length === 0) {
+      const feeDataAsc = [...fundingFeeData].sort((a, b) => {
         return BigNumber(a.total.abs()).minus(BigNumber(b.total.abs())).toNumber()
       })
       for(let i = 0; i < feeDataAsc.length; i++) {
@@ -210,16 +234,16 @@ export class DecreaseMgr extends ArbitrageBase {
         }
         const orderParams = await this._decreasePosition(trace2, btPosition, qtPosition, feeData, percent)
         if (orderParams) {
-          promises.push(orderParams)
+          ordersToCreate.push(orderParams)
         }
-        if (promises.length >= this.arbitrageConfig.MAX_REDUCE_POSITION_COUNTER) {
+        if (ordersToCreate.length >= this.arbitrageConfig.MAX_REDUCE_POSITION_COUNTER) {
           break
         }
       }
-      blogger.info(`${this.traceId} second fund profit promises: ${JSON.stringify(promises)}, feeDataAsc length: ${feeDataAsc.length}`)
+      blogger.info(`${this.traceId} second fund profit promises: ${JSON.stringify(ordersToCreate)}, feeDataAsc length: ${feeDataAsc.length}`)
     }
     // 没有需要减仓的仓位时报警
-    if (promises.length === 0) {
+    if (ordersToCreate.length === 0) {
       const msg = `${this.traceId} no valid order params, not decrease position`
       blogger.info(msg)
       if (percent) {
@@ -230,9 +254,7 @@ export class DecreaseMgr extends ArbitrageBase {
       }
       return
     }
-    const orderParams = await Promise.all(promises)
-    // 过滤掉undefined
-    const orderParamsValid = orderParams.filter(orderParam => orderParam !== undefined)
+    const orderParamsValid = ordersToCreate
     if (orderParamsValid.length === 0) {
       blogger.info(`${this.traceId} no valid order params, not decrease position`)
       return
