@@ -27,7 +27,7 @@ interface BackpackOrderIdentifier {
 
 export class BackpackExchangeAdapter implements ExchangeAdapter {
   readonly traceId: string
-  readonly id = EExchangeId.Backpack
+  readonly id = EExchangeId.BackPack
   readonly cexId = EExchangeCexId.BackPack
   readonly exchangeName = EExchange.Backpack
   readonly settlementAsset = 'USDC'

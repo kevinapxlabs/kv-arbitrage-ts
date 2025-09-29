@@ -25,7 +25,7 @@ export enum EExchangeId {
   Binance = 22,
   LtpBinance = 23,
   LtpOkx = 24,
-  Backpack = 25,
+  BackPack = 25,
   Aster = 27
 }
 
