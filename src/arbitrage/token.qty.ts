@@ -38,7 +38,7 @@ export class TokenQtyMgr {
       const tokenQty = await exchange.getQtyFilter(symbol)
       if (tokenQty) {
         minQtyList.push(BigNumber(tokenQty.minQty))
-        stepSizeList.push(BigNumber(tokenQty.qtyStep))
+        stepSizeList.push(BigNumber(tokenQty.stepSize))
       } else {
         blogger.warn(`${this.traceId} chainToken: ${chainToken} tokenQty not found from exchange: ${exchange.exchangeName}, symbol: ${symbol}`)
       }

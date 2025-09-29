@@ -34,7 +34,7 @@ interface BackpackOrderIdentifier {
 export class BackpackExchangeAdapter implements ExchangeAdapter {
   readonly traceId: string
   readonly id = EExchangeId.Backpack
-  readonly cexId = EExchangeCexId.Backpack
+  readonly cexId = EExchangeCexId.BackPack
   readonly exchangeName = EExchange.Backpack
   readonly settlementAsset = 'USDC'
 
@@ -211,6 +211,16 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   async getCurrentFundingFee(symbol: string): Promise<BigNumber> {
     const fundingFee = await ExchangeDataMgr.getFundingFee(EExchange.Backpack, symbol)
     return fundingFee ? BigNumber(fundingFee) : BigNumber(0)
+  }
+
+  async getSymbolInterval(symbol: string): Promise<number> {
+    try {
+      const interval = await BackpackMarketInfoMgr.getFundingIntervalHours(symbol)
+      return interval ?? 0
+    } catch (error) {
+      blogger.error('backpack getSymbolInterval failed', { symbol, error })
+      return 0
+    }
   }
 
   private normalizeSymbol(symbol: string): string {

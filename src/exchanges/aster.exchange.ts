@@ -226,7 +226,13 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   }
 
   async getSymbolInterval(symbol: string): Promise<number> {
-    return 0
+    try {
+      const interval = await AsterMarketInfoMgr.getFundingIntervalHours(symbol)
+      return interval ?? 0
+    } catch (error) {
+      blogger.error('aster getSymbolInterval failed', { symbol, error })
+      return 0
+    }
   }
 
   private normalizePair(symbol: string): string {

@@ -5,11 +5,13 @@ import { EExchange } from '../../common/exchange.enum.js';
 import { BackpackPublicApi } from '../../libs/backpack/backpack.public.api.js';
 import { BackpackMarket } from '../../libs/backpack/backpack.types.js';
 import { TSMap } from '../../libs/tsmap.js';
-import { qtyFilterCache } from '../../common/cache/interval.cache.js';
+import { intervalCache, qtyFilterCache } from '../../common/cache/interval.cache.js';
 import { TQtyFilter } from './maretinfo.type.js';
 
 const DEFAULT_MEMORY_TTL_SECONDS = 600; // 10 minutes
 const DEFAULT_REDIS_TTL_SECONDS = 3600; // 1 hour
+const FUNDING_INTERVAL_MEMORY_TTL_SECONDS = 3 * 60 * 60; // 3 hours
+const FUNDING_INTERVAL_REDIS_TTL_SECONDS = 24 * 60 * 60; // 24 hours
 
 type SymbolRuleMap = TSMap<string, TQtyFilter>;
 
@@ -38,6 +40,41 @@ export class BackpackMarketInfoMgr {
     const normalized = this.normalizeSymbol(symbol);
     const rules = await this.getAllFutureSymbolRules();
     return rules.get(normalized);
+  }
+
+  /**
+   * 获取 BackPack 永续合约的资费间隔时间（小时）
+  */
+  static async getFundingIntervalHours(symbol: string): Promise<number | undefined> {
+    const normalized = this.normalizeSymbol(symbol);
+    const intervalCacheKey = RedisKeyMgr.FundingIntervalKey(EExchange.Backpack);
+    const memoryValue: TSMap<string, number> | undefined = intervalCache.get(intervalCacheKey);
+    if (memoryValue !== undefined) {
+      return memoryValue.get(normalized);
+    }
+
+    const redisKey = RedisKeyMgr.FundingIntervalKey(EExchange.Backpack);
+    try {
+      const redisRaw = await rdsClient.get(redisKey);
+      if (redisRaw) {
+        const redisValue = new TSMap<string, number>().fromJSON(JSON.parse(redisRaw));
+        intervalCache.set(intervalCacheKey, redisValue, FUNDING_INTERVAL_MEMORY_TTL_SECONDS);
+        return redisValue.get(normalized);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      blogger.error('backpack funding interval read redis failed', { symbol: normalized, message });
+    }
+
+    const interval = await this.fetchFundingIntervalFromServer();
+    try {
+      await rdsClient.set(redisKey, JSON.stringify(interval), FUNDING_INTERVAL_REDIS_TTL_SECONDS);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      blogger.error('backpack funding interval write redis failed', { symbol: normalized, message });
+    }
+    intervalCache.set(intervalCacheKey, interval, FUNDING_INTERVAL_MEMORY_TTL_SECONDS);
+    return interval.get(normalized);
   }
 
   /**
@@ -117,6 +154,41 @@ export class BackpackMarketInfoMgr {
    */
   private static normalizeSymbol(symbol: string): string {
     return symbol.trim().toUpperCase();
+  }
+
+  private static async fetchFundingIntervalFromServer(): Promise<TSMap<string, number>> {
+    try {
+      const markets = await this.fetchFutureMarketInfo();
+      const res = new TSMap<string, number>();
+      markets.forEach((market) => {
+        if (!this.isTradableFuture(market)) {
+          return;
+        }
+        const interval = this.extractFundingInterval(market);
+        if (interval) {
+          res.set(this.normalizeSymbol(market.symbol), interval);
+        }
+      });
+      return res;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      blogger.error('backpack funding interval fetch failed', { message });
+      throw error;
+    }
+  }
+
+  private static extractFundingInterval(market: BackpackMarket | undefined): number | undefined {
+    if (!market || market.fundingInterval === undefined || market.fundingInterval === null) {
+      return undefined;
+    }
+    const interval = Number(market.fundingInterval);
+    if (!Number.isFinite(interval) || interval <= 0) {
+      return undefined;
+    }
+    if (interval >= 60) {
+      return interval / 3600;
+    }
+    return interval;
   }
 
   /**

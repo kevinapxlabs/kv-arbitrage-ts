@@ -14,6 +14,10 @@ export class RedisKeyMgr {
     return `KV:${exchange}:FUNDINGRATE:${symbol.toUpperCase()}`;
   }
 
+  static FundingIntervalKey(exchange: EExchange) {
+    return `KV:${exchange}:FUNDINGINTERVAL`;
+  }
+
   // 保存交易所交易交易规则和交易对
   static MarketInfoKey(exchange: EExchange) {
     return `KV:${exchange}:MARKETINFO}`;
