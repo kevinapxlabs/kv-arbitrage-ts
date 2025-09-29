@@ -12,6 +12,8 @@ export class FundingFeeMgr {
   totalHours = 365 * 24
   historyHours = 48   // 获取48小时内最新历史资费数据
   tokenInfoMap: TSMap<string, TTokenInfo>
+  // Cache symbol funding intervals to avoid repeated adapter lookups
+  private fundingIntervalHoursCache = new Map<string, number>()
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, tokenInfoMap: TSMap<string, TTokenInfo>) {
     this.traceId = traceId
@@ -30,13 +32,23 @@ export class FundingFeeMgr {
         blogger.info(`${this.traceId} history funding fee list is empty`)
         return BigNumber(0)
       }
-      const historyAvgFundingFee = historyFundingFee.reduce((a, b) => a.plus(b), BigNumber(0)).dividedBy(historyFundingFee.length)
-      let fundingIntervalHours = await exchange.getSymbolInterval(symbol)
-      if (!fundingIntervalHours) {
-        blogger.info(`${this.traceId} funding interval symbol: ${symbol} not found, exchange: ${exchange.exchangeName}`)
-        return BigNumber(0)
+      const historyAvgFundingFee = historyFundingFee
+        .reduce((a, b) => a.plus(b), BigNumber(0))
+        .dividedBy(historyFundingFee.length)
+      const cacheKey = `${exchange.cexId}:${symbol}`
+      let fundingIntervalHours = this.fundingIntervalHoursCache.get(cacheKey)
+      if (fundingIntervalHours === undefined) {
+        const fetchedInterval = await exchange.getSymbolInterval(symbol)
+        if (fetchedInterval === undefined || fetchedInterval === null) {
+          blogger.info(`${this.traceId} funding interval symbol: ${symbol} not found, exchange: ${exchange.exchangeName}`)
+          return BigNumber(0)
+        }
+        fundingIntervalHours = fetchedInterval
+        this.fundingIntervalHoursCache.set(cacheKey, fundingIntervalHours)
       }
-      const historyAprFundingFee = historyAvgFundingFee.multipliedBy(this.totalHours).dividedBy(fundingIntervalHours)
+      const historyAprFundingFee = historyAvgFundingFee
+        .multipliedBy(this.totalHours)
+        .dividedBy(fundingIntervalHours)
       return historyAprFundingFee
     }
 
@@ -50,31 +62,33 @@ export class FundingFeeMgr {
     // 3. 获取当前资费数据
     const currentFundingFeeList: TCoinData[] = []
     // TSMap<baseToken, Array<交易所平均历史资费>>
-    const currentFundingFeeMap = new TSMap<string, Array<BigNumber>>()
+    const currentFundingFeeMap = new TSMap<string, Array<BigNumber | null>>()
     for (const chainToken of this.tokenInfoMap.keys()) {
-      let hff = currentFundingFeeMap.get(chainToken)
-      if (!hff) {
-        hff = Array(exchangeList.length).fill(null)
-      }
       const exchangeInfo = this.tokenInfoMap.get(chainToken)
       if (!exchangeInfo) {
         blogger.error(`${this.traceId} chainToken: ${chainToken} getCurrentFundingFeeData not found in tokenInfoMap`)
         continue
       }
       const exchangeTokenInfoMap = exchangeInfo.exchangeTokenMap
-      for (let i = 0; i < exchangeList.length; i++) {
-        const exchange = exchangeList[i]
-        // 获取当前资费
-        const exchangeTokenInfo = exchangeTokenInfoMap[exchange.cexId]
-        if (!exchangeTokenInfo) {
-          blogger.warn(`${this.traceId} exchangeTokenInfo not found, cexId: ${exchange.cexId}, chainToken: ${chainToken}, exchangeName: ${exchange.exchangeName}`)
-          continue
-        }
-        const symbol = exchange.generateOrderbookSymbol(exchangeTokenInfo.exchangeToken)
-        const currentFundingFee = await exchange.getCurrentFundingFee(symbol)
-        hff[i] = await this.getHistoryFundingFeeAverage(exchange, symbol, [currentFundingFee])
-      }
-      currentFundingFeeMap.set(chainToken, hff)
+      // Resolve per-exchange funding fees in parallel for the current snapshot
+      const historyFundingFees = await Promise.all(
+        exchangeList.map(async (exchange) => {
+          const exchangeTokenInfo = exchangeTokenInfoMap[exchange.cexId]
+          if (!exchangeTokenInfo) {
+            blogger.warn(`${this.traceId} exchangeTokenInfo not found, cexId: ${exchange.cexId}, chainToken: ${chainToken}, exchangeName: ${exchange.exchangeName}`)
+            return null
+          }
+          const symbol = exchange.generateOrderbookSymbol(exchangeTokenInfo.exchangeToken)
+          try {
+            const currentFundingFee = await exchange.getCurrentFundingFee(symbol)
+            return await this.getHistoryFundingFeeAverage(exchange, symbol, [currentFundingFee])
+          } catch (error) {
+            blogger.error(`${this.traceId} failed to get current funding fee, cexId: ${exchange.cexId}, chainToken: ${chainToken}, symbol: ${symbol}, error: ${error instanceof Error ? error.message : error}`)
+            return null
+          }
+        })
+      )
+      currentFundingFeeMap.set(chainToken, historyFundingFees)
     }
     // 4. 计算当前资费数据列表
     // 多交易所时进行两两比较
@@ -91,8 +105,7 @@ export class FundingFeeMgr {
         continue
       }
       const exchangeTokenInfoMap = exchangeInfo.exchangeTokenMap
-      for (let i = 0; i < exchangeIndexList.length; i++) {
-        const indexArray = exchangeIndexList[i]
+      for (const indexArray of exchangeIndexList) {
         const baseExchangeIndex = indexArray[0]
         const quoteExchangeIndex = indexArray[1]
         const baseExchange = exchangeList[baseExchangeIndex]
@@ -107,20 +120,22 @@ export class FundingFeeMgr {
           blogger.warn(`${this.traceId} quoteExchangeTokenInfo not found, cexId: ${quoteExchange.cexId}, chainToken: ${tokenKey}, exchangeName: ${quoteExchange.exchangeName}`)
           continue
         }
-        if (hff[baseExchangeIndex] === null || hff[quoteExchangeIndex] === null) {
+        const baseRate = hff[baseExchangeIndex]
+        const quoteRate = hff[quoteExchangeIndex]
+        if (baseRate === null || quoteRate === null) {
           blogger.warn(`${this.traceId} hff[baseExchangeIndex] or hff[quoteExchangeIndex] is null, baseExchangeIndex: ${baseExchangeIndex}, quoteExchangeIndex: ${quoteExchangeIndex}, chainToken: ${tokenKey}`)
           continue
         }
-        const total = hff[baseExchangeIndex].minus(hff[quoteExchangeIndex]).multipliedBy(100)
+        const total = baseRate.minus(quoteRate).multipliedBy(100)
         currentFundingFeeList.push({
           chainToken: tokenKey,
           baseExchange: baseExchange.exchangeName,
           baseExchangeIndex: baseExchangeIndex,
-          baseExchangeRate: hff[baseExchangeIndex],
+          baseExchangeRate: baseRate,
           baseExchangeToken: baseExchangeTokenInfo.exchangeToken,
           quoteExchange: quoteExchange.exchangeName,
           quoteExchangeIndex: quoteExchangeIndex,
-          quoteExchangeRate: hff[quoteExchangeIndex],
+          quoteExchangeRate: quoteRate,
           quoteExchangeToken: quoteExchangeTokenInfo.exchangeToken,
           total: total
         })
