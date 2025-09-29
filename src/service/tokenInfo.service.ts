@@ -36,6 +36,9 @@ export type TExchangeTokenInfo = {
 
 export class TokenInfoService {
 
+  private static readonly TOKEN_INFO_TTL = 10 * 3600
+  private static readonly EXCHANGE_TOKEN_INFO_TTL = TokenInfoService.TOKEN_INFO_TTL + 60
+
   /**
    * 获取token info的redis key
    * @param tokenType 
@@ -59,57 +62,14 @@ export class TokenInfoService {
    * @returns 
    */
   static async getTokenInfoMap(tokenType: ETokenType): Promise<TSMap<string, TTokenInfo>> {
-    // 1. 从redis中获取
     const key = this.getTokenInfoKey(tokenType)
-    const tokenListStr = await rdsClient.get(key)
-    if (tokenListStr) {
-      return new TSMap<string, TTokenInfo>().fromJSON(JSON.parse(tokenListStr))
+    const cachedValue = await rdsClient.get(key)
+    if (cachedValue) {
+      return new TSMap<string, TTokenInfo>().fromJSON(JSON.parse(cachedValue))
     }
-    // 2. 从数据库中获取 token info list
-    const tokenMapTmp = new TSMap<number, TTokenInfo>()
-    // 2.1 获取token列表
-    const tokenRep = new FundingFeeTokenRep(pool)
-    const tokenList = await tokenRep.getAll()
-    for (const token of tokenList) {
-      // 过滤掉已删除的token
-      if (token.isDeleted) continue
-      tokenMapTmp.set(token.id, {
-        chainToken: {
-          id: token.id,
-          chainToken: token.chainToken,
-          grading: token.grading
-        },
-        exchangeTokenList: []
-      })
-    }
-    // 2.2 获取token exchange列表
-    const tokenExchangeRep = new FundingFeeTokenExchangeRep(pool)
-    const tokenExchangeList = await tokenExchangeRep.getAll()
-    for (const tokenExchange of tokenExchangeList) {
-      // 过滤掉非指定类型的token
-      if (tokenExchange.tokenType !== tokenType) continue
-      // 过滤掉已删除的token exchange
-      if (tokenExchange.isDeleted) continue
-      const tokenInfo = tokenMapTmp.get(tokenExchange.tokenId)
-      if (tokenInfo) {
-        tokenInfo.exchangeTokenList.push({
-          id: tokenExchange.id,
-          tokenId: tokenExchange.tokenId,
-          exchangeToken: tokenExchange.exchangeToken,
-          exchangeName: tokenExchange.exchangeName,
-          cexId: tokenExchange.cexId,
-          tokenType: tokenExchange.tokenType
-        })
-      }
-    }
-    // 2.3 转换为map并缓存到redis
-    const tokenMap = new TSMap<string, TTokenInfo>()
-    for (const tokenInfo of tokenMapTmp.values()) {
-      tokenMap.set(tokenInfo.chainToken.chainToken, tokenInfo)
-    }
-    // 3. 缓存到redis
-    await rdsClient.set(key, JSON.stringify(tokenMap), 10 * 3600)
-    return tokenMap
+
+    const { tokenInfoMap } = await this.rebuildCache(tokenType)
+    return tokenInfoMap
   }
 
   /**
@@ -131,56 +91,14 @@ export class TokenInfoService {
   }
 
   static async getExchangeTokenInfoMap(tokenType: ETokenType): Promise<TSMap<string, TExchangeTokenInfo>> {
-    // 1. 从redis中获取
     const key = this.getExchangeTokenInfoKey(tokenType)
-    const exchangeTokenInfoStr = await rdsClient.get(key)
-    if (exchangeTokenInfoStr) {
-      return new TSMap<string, TExchangeTokenInfo>().fromJSON(JSON.parse(exchangeTokenInfoStr))
+    const cachedValue = await rdsClient.get(key)
+    if (cachedValue) {
+      return new TSMap<string, TExchangeTokenInfo>().fromJSON(JSON.parse(cachedValue))
     }
-    // 2. 从数据库中获取 token info list
-    const tokenMapTmp = new TSMap<number, string>()
-    // 2.1 获取token列表
-    const tokenRep = new FundingFeeTokenRep(pool)
-    const tokenList = await tokenRep.getAll()
-    for (const token of tokenList) {
-      // 过滤掉已删除的token
-      if (token.isDeleted) continue
-      tokenMapTmp.set(token.id, token.chainToken)
-    }
-    // 2.2 获取token exchange列表
-    const tokenMap = new TSMap<string, TExchangeTokenInfo>()
-    const tokenExchangeRep = new FundingFeeTokenExchangeRep(pool)
-    const tokenExchangeList = await tokenExchangeRep.getAll()
-    for (const tokenExchange of tokenExchangeList) {
-      // 过滤掉非指定类型的token
-      if (tokenExchange.tokenType !== tokenType) continue
-      // 过滤掉已删除的token exchange
-      if (tokenExchange.isDeleted) continue
-      const chainToken = tokenMapTmp.get(tokenExchange.tokenId)
-      if (chainToken) {
-        const t: TExchangeTokenInfo = {
-          chainToken: chainToken,
-          exchangeTokenInfo: {
-            id: tokenExchange.id,
-            tokenId: tokenExchange.tokenId,
-            exchangeToken: tokenExchange.exchangeToken,
-            exchangeName: tokenExchange.exchangeName,
-            cexId: tokenExchange.cexId,
-            tokenType: tokenExchange.tokenType
-          }
-        }
-        // key 和 key2 的区别是，key是合约token，key2是交易所token, 可能会相同
-        // 缓存到map, 以 [交易所名称-合约token] 作为key
-        const k = this.getExchangeTokenKey(tokenExchange.exchangeName, chainToken)
-        tokenMap.set(k, t)
-        // 缓存到map, 以 [交易所名称-合约token] 作为key
-        const k2 = this.getExchangeTokenKey(tokenExchange.exchangeName, tokenExchange.exchangeToken)
-        tokenMap.set(k2, t)
-      }
-    }
-    // 3. 缓存到redis
-    await rdsClient.set(key, JSON.stringify(tokenMap), 10 * 3600 + 60)
-    return tokenMap
+
+    const { exchangeTokenInfoMap } = await this.rebuildCache(tokenType)
+    return exchangeTokenInfoMap
   }
 
   static async getFuturesExchangeTokenInfoMap(): Promise<TSMap<string, TExchangeTokenInfo>> {
@@ -203,5 +121,100 @@ export class TokenInfoService {
     if (tokenInfo) {
       return tokenInfo.chainToken
     }
+  }
+
+  private static async rebuildCache(tokenType: ETokenType): Promise<{
+    tokenInfoMap: TSMap<string, TTokenInfo>,
+    exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
+  }> {
+    const { tokenInfoMap, exchangeTokenInfoMap } = await this.buildTokenData(tokenType)
+    await Promise.all([
+      rdsClient.set(this.getTokenInfoKey(tokenType), JSON.stringify(tokenInfoMap), this.TOKEN_INFO_TTL),
+      rdsClient.set(this.getExchangeTokenInfoKey(tokenType), JSON.stringify(exchangeTokenInfoMap), this.EXCHANGE_TOKEN_INFO_TTL)
+    ])
+    return { tokenInfoMap, exchangeTokenInfoMap }
+  }
+
+  private static async buildTokenData(tokenType: ETokenType): Promise<{
+    tokenInfoMap: TSMap<string, TTokenInfo>,
+    exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
+  }> {
+    const tokenRep = new FundingFeeTokenRep(pool)
+    const tokenExchangeRep = new FundingFeeTokenExchangeRep(pool)
+
+    // 获取token列表和token交易所列表
+    const [tokenList, tokenExchangeList] = await Promise.all([
+      tokenRep.getAll(),
+      tokenExchangeRep.getAll()
+    ])
+
+    const chainTokenById = new Map<number, TChainToken>()
+    const tokenInfoByChainToken = new Map<string, TTokenInfo>()
+
+    for (const token of tokenList) {
+      if (token.isDeleted) continue
+      const chainToken: TChainToken = {
+        id: token.id,
+        chainToken: token.chainToken,
+        grading: token.grading
+      }
+      chainTokenById.set(token.id, chainToken)
+      tokenInfoByChainToken.set(chainToken.chainToken, {
+        chainToken,
+        exchangeTokenList: []
+      })
+    }
+
+    const exchangeTokenInfoByKey = new Map<string, TExchangeTokenInfo>()
+
+    for (const tokenExchange of tokenExchangeList) {
+      if (tokenExchange.isDeleted) continue
+      if (tokenExchange.tokenType !== tokenType) {
+        continue
+      }
+
+      const chainToken = chainTokenById.get(tokenExchange.tokenId)
+      if (!chainToken) {
+        continue
+      }
+
+      const exchangeToken: TExchangeToken = {
+        id: tokenExchange.id,
+        tokenId: tokenExchange.tokenId,
+        exchangeToken: tokenExchange.exchangeToken,
+        exchangeName: tokenExchange.exchangeName,
+        cexId: tokenExchange.cexId,
+        tokenType: tokenExchange.tokenType
+      }
+
+      const tokenInfo = tokenInfoByChainToken.get(chainToken.chainToken)
+      if (tokenInfo) {
+        tokenInfo.exchangeTokenList.push(exchangeToken)
+      }
+
+      const exchangeTokenInfo: TExchangeTokenInfo = {
+        chainToken: chainToken.chainToken,
+        exchangeTokenInfo: exchangeToken
+      }
+
+      const chainTokenKey = this.getExchangeTokenKey(tokenExchange.exchangeName, chainToken.chainToken)
+      exchangeTokenInfoByKey.set(chainTokenKey, exchangeTokenInfo)
+
+      // 保存按合约token和交易所token两种key的映射，兼容不同调用场景
+      const exchangeTokenKey = this.getExchangeTokenKey(tokenExchange.exchangeName, tokenExchange.exchangeToken)
+      exchangeTokenInfoByKey.set(exchangeTokenKey, exchangeTokenInfo)
+    }
+
+    const tokenInfoMap = new TSMap<string, TTokenInfo>()
+    for (const [chainToken, info] of tokenInfoByChainToken) {
+      tokenInfoMap.set(chainToken, info)
+    }
+
+    const exchangeTokenInfoMap = new TSMap<string, TExchangeTokenInfo>()
+    for (const [key, info] of exchangeTokenInfoByKey) {
+      exchangeTokenInfoMap.set(key, info)
+    }
+
+    return { tokenInfoMap, exchangeTokenInfoMap }
   }
 }
