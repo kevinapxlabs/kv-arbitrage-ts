@@ -8,11 +8,13 @@ import { LeverageMgr } from "./leverage.js";
 import { RebalanceMgr } from "./rebalance.js";
 import { TRiskDataInfo } from "./type.js";
 import { ExchangeAdapter } from "../exchanges/exchange.adapter.js";
-import { EPositionDescrease } from "../common/types/exchange.type.js";
+import { EPositionDescrease, TCoinData } from "../common/types/exchange.type.js";
 import { OpportunityMgr } from "./opportunity.js";
 import { SettlementMgr } from "./settlement.js";
 import { SummaryMgr } from "./summary.js";
 import { NoticeMgr } from "./notice.js";
+import { FundingFeeMgr } from "./fundingFee.data.js";
+import { TSMap } from "../libs/tsmap.js";
 
 /*
 * 管理funding fee 的所有逻辑，包括减仓、加仓、杠杆调整、rebalance、利润锁定、总结
@@ -35,6 +37,24 @@ export class ArbitrageManage extends ArbitrageBase {
       }
     }
     return EPositionDescrease.None
+  }
+
+  getFundingfeeLog(coinData: TCoinData[], msg: string) {
+    const minTotal = 12
+    const logs = new TSMap<string, string>()
+    for (const coin of coinData) {
+      if (coin.total.abs().gt(minTotal)) {
+        const key = `${coin.chainToken}-${coin.baseExchange}-${coin.quoteExchange}`
+        logs.set(key, `${coin.baseExchange}:${coin.baseExchangeRate.toFixed(3)}, ${coin.quoteExchange}:${coin.quoteExchangeRate.toFixed(3)}, total:${coin.total.toFixed(3)}`)
+      }
+      if (logs.size() >= 10) {
+        blogger.info(`${this.traceId} ${msg}: ${JSON.stringify(logs.toJSON())}`)
+        logs.clear()
+      }
+    }
+    if (logs.size() > 0) {
+      blogger.info(`${this.traceId} ${msg}: ${JSON.stringify(logs.toJSON())}`)
+    }
   }
 
   async _run() {
@@ -66,19 +86,24 @@ export class ArbitrageManage extends ArbitrageBase {
         return
       }
 
-      // 6. 判断减仓等级方向
+      // 6. 获取当前资费数据
+      const fundingFeeMgr = new FundingFeeMgr(this.traceId, exchangeIndexMgr, tokenInfoMap)
+      const currentFundingFeeData = await fundingFeeMgr.getCurrentFundingFeeData()
+      this.getFundingfeeLog(currentFundingFeeData, 'current funding fee data')
+
+      // 7. 判断减仓等级方向
       const direction = this.checkDescrease(riskData, exchangeIndexMgr.exchangeList)
       blogger.info(`${this.traceId} get direction: ${direction}`)
 
-      // 7. 获取机会
+      // 8. 获取机会
       const opportunityMgr = new OpportunityMgr(this.traceId)
       await opportunityMgr.run(riskData)
 
-      // 11. 利润锁定
+      // 9. 利润锁定
       const profitLockedMgr = new SettlementMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, exchangeTokenInfoMap)
-      await profitLockedMgr.run(riskData)
+      await profitLockedMgr.run(riskData, currentFundingFeeData)
 
-      // 12. 生成总结
+      // 10. 生成总结
       const summaryMgr = new SummaryMgr(this.traceId, arbitrageConfig)
       await summaryMgr.run(riskData)
     } catch(err: any) {

@@ -1,7 +1,7 @@
 import BigNumber from "bignumber.js"
 import { EKVSide, EOrderReason } from "../common/exchange.enum.js"
 import { blogger } from "../common/base/logger.js"
-import { TOrderParams } from "../common/types/exchange.type.js"
+import { TCoinData, TOrderParams } from "../common/types/exchange.type.js"
 import { TKVPosition } from "../exchanges/types.js"
 import { sendMsg } from "../utils/bot.js"
 import { ParamsMgr } from "./params.js"
@@ -166,7 +166,7 @@ export class SettlementMgr extends ArbitrageBase {
     await sendMsg(ParamsMgr.TgNoticeName, content)
   }
   
-  async run(riskData: TRiskDataInfo) {
+  async run(riskData: TRiskDataInfo, fundingFeeData: TCoinData[]) {
     const tokenKeys = riskData.chainTokenPositionMap.keys()
     // 1. 检查是否达到 profit 最小要求
     if (tokenKeys.length > 0) {
