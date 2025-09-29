@@ -43,7 +43,7 @@ export class OpportunityMgr extends ArbitrageBase {
     if (this.arbitrageConfig.TOKEN_BANNED_LIST.includes(upperToken)) {
       return true
     }
-    return ParamsMgr.stableTokenList.includes(upperToken)
+    return ParamsMgr.Stable_TOKEN_LIST.includes(upperToken)
   }
 
   private hasPosition(position: TKVPosition | null | undefined): boolean {
@@ -136,7 +136,7 @@ export class OpportunityMgr extends ArbitrageBase {
     }
     texts.push(`【Mark】: ${this.traceId}`)
     const content = texts.join('\n')
-    await sendMsg(ParamsMgr.TgNoticeName, content)
+    await sendMsg(ParamsMgr.TG_NOTICE_NAME, content)
   }
 
   async run(riskData: TRiskDataInfo) {

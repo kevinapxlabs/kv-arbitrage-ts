@@ -42,7 +42,7 @@ export class RebalanceMgr extends ArbitrageBase {
     texts.push(`【Mark】: ${this.traceId}`)
     const content = texts.join('\n')
     // console.log(content)
-    await sendMsg(ParamsMgr.TgNoticeName, content)
+    await sendMsg(ParamsMgr.TG_NOTICE_NAME, content)
   }
 
   async rebalance(chainToken: string, positions: (TKVPosition | null)[]): Promise<TRebalanceOrder | undefined> {

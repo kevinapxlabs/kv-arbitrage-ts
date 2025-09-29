@@ -21,7 +21,8 @@ export interface TArbitrageConfig {
 
   REDUCE_ONLY: boolean                    // 是否只减仓不加仓, 默认是false, 当撤仓时执行
 
-  PRICE_VAR_SETTLEMENT: number          // 结算价格差价
+  SETTLEMENT_PRICE_VAR_BPS_MIN: number          // 结算价格差价最小值
+  SETTLEMENT_PRICE_VAR_BPS_MAX: number          // 结算价格差价最大值
 }
 
 // 由于 TypeScript 的类型信息在运行时不可用，无法直接通过空对象获取类型的键
@@ -36,7 +37,8 @@ const requiredKeys: (keyof TArbitrageConfig)[] = [
   'REBALANCE_MAX_USD_AMOUNT',
   'REDUCE_ONLY',
   'TOKEN_BANNED_LIST',
-  'PRICE_VAR_SETTLEMENT'
+  'SETTLEMENT_PRICE_VAR_BPS_MIN',
+  'SETTLEMENT_PRICE_VAR_BPS_MAX'
 ]
 
 const typeConverters: Record<string, (value: string) => any> = {

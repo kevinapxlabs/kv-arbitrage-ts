@@ -92,8 +92,8 @@ export class SettlementMgr extends ArbitrageBase {
       blogger.info(`${this.traceId}, ${trace2}, priceDelta not found, exchange: ${btExchange.exchangeName}`)
       return
     }
-    if (priceDelta < this.arbitrageConfig.PRICE_VAR_SETTLEMENT) {
-      blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} less than ${this.arbitrageConfig.PRICE_VAR_SETTLEMENT}, not increase position`)
+    if (priceDelta < this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX) {
+      blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} less than ${this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX}, not increase position`)
       return
     }
     const price = await exchangeDataMgr.getIndexPrice2([btExchange, qtExchange], chainToken, this.exchangeTokenInfoMap)
@@ -101,7 +101,7 @@ export class SettlementMgr extends ArbitrageBase {
       blogger.info(`${this.traceId} ${trace2}, price not found, exchange: ${btExchange.exchangeName}`)
       return
     }
-    blogger.info(`${this.traceId} ${trace2}, price delta is ok, symbol: ${btSymbol}, price delta: ${priceDelta}, price var ${this.arbitrageConfig.PRICE_VAR_SETTLEMENT}, btPosition: ${JSON.stringify(btPosition)}, qtPosition: ${JSON.stringify(qtPosition)}`)
+    blogger.info(`${this.traceId} ${trace2}, price delta is ok, symbol: ${btSymbol}, price delta: ${priceDelta}, price var ${this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX}, btPosition: ${JSON.stringify(btPosition)}, qtPosition: ${JSON.stringify(qtPosition)}`)
     const quantity = ParamsMgr.USD_AMOUNT_EVERY_ORDER.dividedBy(price)
     let newQuantity = quantity
     // 7. 如果btPosition 或 qtPosition 的positionAmt 小于 quantity * 2，则使用 positionAmt 作为新的quantity
@@ -163,7 +163,7 @@ export class SettlementMgr extends ArbitrageBase {
     texts.push(`【Mark】: ${this.traceId}`)
     const content = texts.join('\n')
     // console.log(content)
-    await sendMsg(ParamsMgr.TgNoticeName, content)
+    await sendMsg(ParamsMgr.TG_NOTICE_NAME, content)
   }
   
   async run(riskData: TRiskDataInfo, fundingFeeData: TCoinData[]) {

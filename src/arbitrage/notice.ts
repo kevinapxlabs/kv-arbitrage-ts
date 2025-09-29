@@ -15,7 +15,7 @@ export class NoticeMgr {
       blogger.info(`${traceId} no decrease postion, msg ${msg} skiped, send interval less than ${minSeconds}s`)
       return
     }
-    sendMsg(ParamsMgr.TgNoticeName, msg)
+    sendMsg(ParamsMgr.TG_NOTICE_NAME, msg)
     noDecreasePositionTimestamp = Date.now()
   }
 
@@ -25,7 +25,7 @@ export class NoticeMgr {
       blogger.info(`${traceId} no decrease postion2, msg ${msg} skiped, send interval less than ${minSeconds}s`)
       return
     }
-    sendMsg(ParamsMgr.TgNoticeName, msg)
+    sendMsg(ParamsMgr.TG_NOTICE_NAME, msg)
     noDecreasePositionTimestamp2 = Date.now()
   }
 
@@ -37,7 +37,7 @@ export class NoticeMgr {
       blogger.info(`${traceId} main error, msg ${msg} skiped, send interval less than ${minSeconds}s`)
       return
     }
-    sendMsg(ParamsMgr.TgNoticeName, msg)
+    sendMsg(ParamsMgr.TG_NOTICE_NAME, msg)
     mainErrorTimestamp = Date.now()
   }
 }

@@ -61,7 +61,7 @@ export class SummaryMgr {
     const positions = this.getPositions(riskData)
     texts.push(...positions)
     const content = texts.join('\n')
-    await sendMsg(ParamsMgr.TgNoticeName, content)
+    await sendMsg(ParamsMgr.TG_NOTICE_NAME, content)
   }
 
   async getRiskData(riskData: TRiskDataInfo): Promise<string[]> {
@@ -105,7 +105,7 @@ export class SummaryMgr {
     texts.push(...riskDataTexts)
     const content = texts.join('\n')
     // console.log(content)
-    await sendMsg(ParamsMgr.TgNoticeName, content)
+    await sendMsg(ParamsMgr.TG_NOTICE_NAME, content)
   }
 
   async toTg(riskData: TRiskDataInfo) {

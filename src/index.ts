@@ -8,5 +8,5 @@ cron.schedule('*/3 * * * * *', arbitrageTask);
 
 (async () => {
   // await arbitrageTask()
-  await sendMsg(ParamsMgr.TgNoticeName, 'arbitrage server start')
+  await sendMsg(ParamsMgr.TG_NOTICE_NAME, 'arbitrage server start')
 })();
