@@ -3,6 +3,19 @@ import { EKVSide } from "../common/exchange.enum.js"
 
 export class UtilsMgr {
   /*
+  * getSideByTotalAPR: 根据totalAPR获取持仓方向
+  * 例如:totalAPR > 0, baseSide需要做空，返回 EKVSide.SHORT
+  * 例如:totalAPR < 0, baseSide需要做多，返回 EKVSide.LONG
+  */
+  static getSideByTotalAPR(totalAPR: BigNumber): EKVSide {
+    if (totalAPR.gt(0)) {
+      return EKVSide.SHORT
+    } else {
+      return EKVSide.LONG
+    }
+  }
+
+  /*
   * getSideByPositionAmt: 根据positionAmt获取持仓方向
   * 例如:positionAmt > 0, baseSide做多，返回 EKVSide.LONG
   * 例如:positionAmt < 0, baseSide做空，返回 EKVSide.SHORT

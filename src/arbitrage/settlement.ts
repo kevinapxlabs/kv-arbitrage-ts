@@ -26,7 +26,7 @@ export class SettlementMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
   orderTakerMgr: OrderTakerMgr
-  private readonly maxHoldingMs = 24 * 60 * 60 * 1000
+  private readonly maxHoldingSeconds = 24 * 60 * 60
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
     super(`${traceId} profit locked`)
@@ -70,7 +70,7 @@ export class SettlementMgr extends ArbitrageBase {
   }
 
   // 若redis无数据则视为持仓时间过长，返回0；否则返回redis记录的持仓时长
-  private async getHoldDurationMs(chainToken: string, baseExchange: ExchangeAdapter, quoteExchange: ExchangeAdapter): Promise<number> {
+  private async getHoldDurationSeconds(chainToken: string, baseExchange: ExchangeAdapter, quoteExchange: ExchangeAdapter): Promise<number> {
     const now = Date.now()
     const openedAt = await this.getPositionOpenedAt(chainToken, baseExchange, quoteExchange)
     if (openedAt > now) {
@@ -88,8 +88,13 @@ export class SettlementMgr extends ArbitrageBase {
     return fundingFeeMap
   }
 
-  // 根据持仓时长和资费差动态计算当前需要满足的利差阈值
-  private computeRequiredSpreadBps(holdDurationMs: number, fundingDiffBps: number | undefined): number {
+  /* 根据持仓时长和资费差动态计算当前需要满足的利差阈值
+  * @param holdDurationSeconds 持仓时长
+  * @param btSide 基础交易所持仓方向
+  * @param fundingDiffBps 资费差 按年化计算的资费差 bps
+  * @returns 需要满足的利差阈值
+  */
+  private computeRequiredSpreadBps(holdDurationSeconds: number, btSide: EKVSide, fundingDiffBps: BigNumber | undefined): number {
     const minBps = this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MIN
     const maxBps = this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX
     if (maxBps <= minBps) {
@@ -97,12 +102,18 @@ export class SettlementMgr extends ArbitrageBase {
     }
     const range = maxBps - minBps
     let startingThreshold = maxBps
+    let fundingRatio = 0
     if (fundingDiffBps !== undefined && Number.isFinite(fundingDiffBps)) {
-      const cappedFunding = Math.max(-range, Math.min(range, fundingDiffBps))
-      startingThreshold = Math.max(minBps, Math.min(maxBps, maxBps + cappedFunding))
+      const side = UtilsMgr.getSideByTotalAPR(fundingDiffBps)
+      if (btSide !== side) {
+        fundingRatio = Math.min(fundingDiffBps.abs().toNumber() / ParamsMgr.MAX_FUNDING_RATIO, 1)
+      }
     }
-    const holdRatio = Math.max(0, Math.min(holdDurationMs / this.maxHoldingMs, 1))
-    const threshold = minBps + (startingThreshold - minBps) * (1 - holdRatio)
+    const holdRatio = Math.min(holdDurationSeconds / this.maxHoldingSeconds, 1)
+    // fundingRatio 权重2，holdRatio 权重1，取平均值
+    const ratio = (fundingRatio * 2 + holdRatio) / 3
+    const threshold = minBps + (startingThreshold - minBps) * (1 - ratio)
+    blogger.info(`${this.traceId} compute spread, holdDurationSeconds: ${holdDurationSeconds}, btSide: ${btSide}, fundingDiffBps: ${fundingDiffBps}, fundingRatio: ${fundingRatio}, holdRatio: ${holdRatio}, ratio: ${ratio}, threshold: ${threshold}`)
     return Math.max(minBps, Math.min(maxBps, threshold))
   }
 
@@ -166,12 +177,11 @@ export class SettlementMgr extends ArbitrageBase {
       blogger.info(`${this.traceId}, ${trace2}, priceDelta not found, exchange: ${btExchange.exchangeName}`)
       return
     }
-    const holdDurationMs = await this.getHoldDurationMs(chainToken, btExchange, qtExchange)   // 记录该组合的持仓时长，用于动态阈值
-    const holdHours = holdDurationMs / (60 * 60 * 1000)
-    const fundingDiffBps = fundingData ? fundingData.total.toNumber() : undefined
-    const requiredDelta = this.computeRequiredSpreadBps(holdDurationMs, fundingDiffBps)
+    const holdDurationSeconds = await this.getHoldDurationSeconds(chainToken, btExchange, qtExchange)   // 记录该组合的持仓时长，用于动态阈值
+    const fundingDiffBps = fundingData ? fundingData.total : undefined
+    const requiredDelta = this.computeRequiredSpreadBps(holdDurationSeconds, btSide, fundingDiffBps)
     if (priceDelta < requiredDelta) {
-      blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} below required ${requiredDelta}, holdHours: ${holdHours.toFixed(2)}, fundingDiffBps: ${fundingDiffBps}`)
+      blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} below required ${requiredDelta}, fundingDiffBps: ${fundingDiffBps}`)
       return
     }
     const price = await exchangeDataMgr.getIndexPrice2([btExchange, qtExchange], chainToken, this.exchangeTokenInfoMap)
@@ -179,10 +189,10 @@ export class SettlementMgr extends ArbitrageBase {
       blogger.info(`${this.traceId} ${trace2}, price not found, exchange: ${btExchange.exchangeName}`)
       return
     }
-    if (holdDurationMs >= this.maxHoldingMs) {
-      blogger.warn(`${this.traceId} ${trace2}, holding time ${holdHours.toFixed(2)}h exceeded limit, using min delta ${this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MIN}`)
+    if (holdDurationSeconds >= this.maxHoldingSeconds) {
+      blogger.warn(`${this.traceId} ${trace2}, holding time ${holdDurationSeconds}s exceeded limit, using min delta ${this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MIN}`)
     }
-    blogger.info(`${this.traceId} ${trace2}, price delta ok, symbol: ${btSymbol}, price delta: ${priceDelta}, required delta: ${requiredDelta}, holdHours: ${holdHours.toFixed(2)}, fundingDiffBps: ${fundingDiffBps}, btPosition: ${JSON.stringify(btPosition)}, qtPosition: ${JSON.stringify(qtPosition)}`)
+    blogger.info(`${this.traceId} ${trace2}, price delta ok, symbol: ${btSymbol}, price delta: ${priceDelta}, required delta: ${requiredDelta}, fundingDiffBps: ${fundingDiffBps}, btPosition: ${JSON.stringify(btPosition)}, qtPosition: ${JSON.stringify(qtPosition)}`)
     const quantity = ParamsMgr.USD_AMOUNT_EVERY_ORDER.dividedBy(price)
     let newQuantity = quantity
     // 7. 如果btPosition 或 qtPosition 的positionAmt 小于 quantity * 2，则使用 positionAmt 作为新的quantity
@@ -229,7 +239,7 @@ export class SettlementMgr extends ArbitrageBase {
   }
 
   async toTg(orderParams: TOrderParams[]) {
-    const texts = ['【通知主题】: 资产结算(利润结算)']
+    const texts = ['【通知主题】: 仓位结算']
     for(let i = 0; i < orderParams.length; i++) {
       const item = orderParams[i]
       let side: string
