@@ -15,6 +15,7 @@ import { SummaryMgr } from "./summary.js";
 import { NoticeMgr } from "./notice.js";
 import { FundingFeeMgr } from "./fundingFee.data.js";
 import { TSMap } from "../libs/tsmap.js";
+import { DecreaseMgr } from "./decrease.js";
 
 /*
 * 管理funding fee 的所有逻辑，包括减仓、加仓、杠杆调整、rebalance、利润锁定、总结
@@ -95,15 +96,26 @@ export class ArbitrageManage extends ArbitrageBase {
       const direction = this.checkDescrease(riskData, exchangeIndexMgr.exchangeList)
       blogger.info(`${this.traceId} get direction: ${direction}`)
 
-      // 8. 获取机会
+      // 8. 减仓，根据目前资费数据进行减仓
+      if (direction === EPositionDescrease.Decrease) {
+        const decreaseMgr = new DecreaseMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, exchangeTokenInfoMap)
+        await decreaseMgr.decreasePosition(riskData, currentFundingFeeData)
+      } else if (direction === EPositionDescrease.DecreasePercent) {
+        // 8.1. 减仓20%
+        blogger.info(`${this.traceId} decrease position percent: 20%`)
+        const decreaseMgr = new DecreaseMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, exchangeTokenInfoMap)
+        await decreaseMgr.decreasePosition(riskData, currentFundingFeeData, 0.2)
+      }
+
+      // 9. 获取机会
       const opportunityMgr = new OpportunityMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, tokenInfoMap, exchangeTokenInfoMap)
       await opportunityMgr.run(riskData)
 
-      // 9. 利润锁定
+      // 10. 利润锁定
       const profitLockedMgr = new SettlementMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, exchangeTokenInfoMap)
       await profitLockedMgr.run(riskData, currentFundingFeeData)
 
-      // 10. 生成总结
+      // 11. 生成总结
       const summaryMgr = new SummaryMgr(this.traceId, arbitrageConfig)
       await summaryMgr.run(riskData)
     } catch(err: any) {

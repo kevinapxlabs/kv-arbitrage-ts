@@ -27,6 +27,9 @@ export interface TArbitrageConfig {
 
   REBALANCE_MAX_USD_AMOUNT: number      // 重新平衡最大金额, 按 USD 计算
 
+  // decrease position
+  DECREASE_PRICE_DELTA_BPS: number        // 价差达到阈值时才会执行因风控而减仓 bps
+  MAX_REDUCE_POSITION_COUNTER: number     // 每轮执行最大减仓仓位数量
   REDUCE_ONLY: boolean                    // 是否只减仓不加仓, 默认是false, 当撤仓时执行
 
   SETTLEMENT_PRICE_VAR_BPS_MIN: number          // 结算价格差价最小值
@@ -49,6 +52,8 @@ const requiredKeys: (keyof TArbitrageConfig)[] = [
   'MAX_POSITION_TOKEN_COUNTER',
   'MAX_USD_EXCHANGE_AMOUNT_TOKEN',
   'REBALANCE_MAX_USD_AMOUNT',
+  'DECREASE_PRICE_DELTA_BPS',
+  'MAX_REDUCE_POSITION_COUNTER',
   'REDUCE_ONLY',
   'TOKEN_BANNED_LIST',
   'SETTLEMENT_PRICE_VAR_BPS_MIN',
