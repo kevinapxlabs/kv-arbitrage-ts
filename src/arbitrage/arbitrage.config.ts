@@ -8,6 +8,14 @@ import { ArbitrageConfigRep } from "../orm/arbitrage.config.js"
 export interface TArbitrageConfig {
   PAUSE: boolean                      // 是否暂停
 
+  // 交易所保证金比例
+  BP_MARGIN_RATIO_1: number
+  BP_MARGIN_RATIO_2: number
+  BP_MARGIN_RATIO_3: number
+  ASTER_MARGIN_RATIO_1: number
+  ASTER_MARGIN_RATIO_2: number
+  ASTER_MARGIN_RATIO_3: number
+
   SHARES: number                      // 投资人总投资额
 
   // increase position
@@ -29,6 +37,12 @@ export interface TArbitrageConfig {
 // 因此需要手动罗列所有可能的键
 const requiredKeys: (keyof TArbitrageConfig)[] = [
   'PAUSE',
+  'BP_MARGIN_RATIO_1',
+  'BP_MARGIN_RATIO_2',
+  'BP_MARGIN_RATIO_3',
+  'ASTER_MARGIN_RATIO_1',
+  'ASTER_MARGIN_RATIO_2',
+  'ASTER_MARGIN_RATIO_3',
   'SHARES',
   'PRICE_DELTA_BPS',
   'MAX_POSITION_COUNTER',

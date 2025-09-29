@@ -11,6 +11,7 @@ import { EPositionDescrease } from '../common/types/exchange.type.js'
 import { TRiskDataInfo } from '../arbitrage/type.js'
 import { ExchangeDataMgr } from '../arbitrage/exchange.data.js'
 import { BpxApiClient, FuturePositionWithMargin, OrderStatus, OrderType, Side, TimeInForce } from '../libs/bpxClient/index.js'
+import { IncreasePositionDiscount } from './constant.js'
 
 const COMPLETED_ORDER_STATUSES = new Set<OrderStatus>([
   OrderStatus.Cancelled,
@@ -39,10 +40,28 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   }
 
   isIncrease(riskData: TRiskDataInfo): boolean {
-    return false
+    const bpAcc = riskData.accountInfo.bpAccountInfo
+    if (!bpAcc) {
+      return false
+    }
+    const bpMarginFraction = bpAcc.marginFraction
+    const bpInitialMarginFraction = bpAcc.imf
+    const increaseCheck = bpMarginFraction < this.arbitrageConfig.BP_MARGIN_RATIO_1
+          && bpInitialMarginFraction < IncreasePositionDiscount
+    return increaseCheck
   }
 
   isDecrease(riskData: TRiskDataInfo): EPositionDescrease {
+    const bpAcc = riskData.accountInfo.bpAccountInfo
+    if (!bpAcc) {
+      return EPositionDescrease.None
+    }
+    const bpMarginFraction = bpAcc.marginFraction
+    if (bpMarginFraction > this.arbitrageConfig.BP_MARGIN_RATIO_3) {
+      return EPositionDescrease.DecreasePercent
+    } else if (bpMarginFraction > this.arbitrageConfig.BP_MARGIN_RATIO_2) {
+      return EPositionDescrease.Decrease
+    }
     return EPositionDescrease.None
   } 
 

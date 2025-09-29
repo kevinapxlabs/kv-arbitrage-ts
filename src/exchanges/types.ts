@@ -16,8 +16,8 @@ export type TKVPosition = {
 }
 
 export type TAsterAccountInfo = {
-  imr: string
-  mmr: string
+  initialMarginFraction: number
+  marginFraction: number
   equity: string
 }
 

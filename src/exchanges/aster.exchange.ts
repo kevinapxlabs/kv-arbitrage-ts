@@ -2,7 +2,7 @@ import { blogger } from '../common/base/logger.js'
 import { EExchange, EExchangeCexId, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import type { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
 import type { ExchangeAdapter } from './exchange.adapter.js'
-import type { TAccountInfo, TBNKey, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
+import type { TAccountInfo, TAsterAccountInfo, TBNKey, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
 import {
   AsterAccountApi,
   AsterNewOrderRespType,
@@ -20,6 +20,7 @@ import { defiConfig } from '../config/config.js'
 import { EPositionDescrease } from '../common/types/exchange.type.js'
 import { TRiskDataInfo } from '../arbitrage/type.js'
 import { ExchangeDataMgr } from '../arbitrage/exchange.data.js'
+import { IncreasePositionDiscount } from './constant.js'
 
 const COMPLETED_ORDER_STATUSES = new Set<
   AsterOrderStatus
@@ -51,10 +52,23 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   }
 
   isIncrease(riskData: TRiskDataInfo): boolean {
-    return false
+    const asterAcc = riskData.accountInfo.asterAccountInfo
+    if (!asterAcc) {
+      return false
+    }
+    return asterAcc.marginFraction < this.arbitrageConfig.ASTER_MARGIN_RATIO_1 && asterAcc.initialMarginFraction < IncreasePositionDiscount
   }
 
   isDecrease(riskData: TRiskDataInfo): EPositionDescrease {
+    const asterAcc = riskData.accountInfo.asterAccountInfo
+    if (!asterAcc) {
+      return EPositionDescrease.None
+    }
+    if (asterAcc.marginFraction > this.arbitrageConfig.ASTER_MARGIN_RATIO_3) {
+      return EPositionDescrease.DecreasePercent
+    } else if (asterAcc.marginFraction > this.arbitrageConfig.ASTER_MARGIN_RATIO_2) {
+      return EPositionDescrease.Decrease
+    }
     return EPositionDescrease.None
   }
 
@@ -80,11 +94,20 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
       apiSecret: keyInfo.secret
     })
     try {
-      const account = await accountApi.getAccountInfo()
+      const accountInfo = await accountApi.getAccountInfo()
+      const { totalInitialMargin, totalMaintMargin, totalMarginBalance } = accountInfo
+      blogger.info(`${this.traceId} aster margin ratio, totalInitialMargin: ${totalInitialMargin}, totalMaintMargin: ${totalMaintMargin}, totalMarginBalance: ${totalMarginBalance}`)
+      const imr = parseFloat(totalInitialMargin) / parseFloat(totalMarginBalance)
+      const mmr = parseFloat(totalMaintMargin) / parseFloat(totalMarginBalance)
+      const asterAcc: TAsterAccountInfo = {
+        initialMarginFraction: imr,
+        marginFraction: mmr,
+        equity: totalMarginBalance
+      }
       return {
-        totalNetEquity: account.totalMarginBalance,
-        totalPositiveNotional: account.totalPositionInitialMargin,
-        asterAccountInfo: null,
+        totalNetEquity: accountInfo.totalMarginBalance,
+        totalPositiveNotional: accountInfo.totalPositionInitialMargin,
+        asterAccountInfo: asterAcc,
         bpAccountInfo: null
       }
     } catch (error) {

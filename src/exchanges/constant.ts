@@ -1,0 +1,1 @@
+export const IncreasePositionDiscount = 0.95
