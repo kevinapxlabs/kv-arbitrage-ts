@@ -96,7 +96,7 @@ export class ArbitrageManage extends ArbitrageBase {
       blogger.info(`${this.traceId} get direction: ${direction}`)
 
       // 8. 获取机会
-      const opportunityMgr = new OpportunityMgr(this.traceId)
+      const opportunityMgr = new OpportunityMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, tokenInfoMap, exchangeTokenInfoMap)
       await opportunityMgr.run(riskData)
 
       // 9. 利润锁定

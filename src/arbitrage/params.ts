@@ -1,3 +1,5 @@
+import BigNumber from "bignumber.js"
+
 export class ParamsMgr {
   static USD_AMOUNT_EVERY_ORDER = BigNumber(200)           // 每次下单的金额 USD
 
