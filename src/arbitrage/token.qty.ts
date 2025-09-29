@@ -26,29 +26,42 @@ export class TokenQtyMgr {
     chainToken: string,
     exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
   ): Promise<TTokenQty | undefined> {
-    let minQtyList: BigNumber[] = [], stepSizeList: BigNumber[] = []
-    for (const exchange of this.exchangeIndexMgr.exchangeList) {
+    let maxMinQty: BigNumber | undefined
+    let maxStepSize: BigNumber | undefined
+    let validCount = 0
+    await Promise.all(this.exchangeIndexMgr.exchangeList.map(async (exchange) => {
       const key = TokenInfoService.getExchangeTokenKey(exchange.exchangeName, chainToken)
       const exchangeInfo = exchangeTokenInfoMap.get(key)
       if (!exchangeInfo) {
         blogger.warn(`${this.traceId} chainToken: ${chainToken} getMinQtyDecimal not found in tokenInfoMap, key: ${key}`)
-        return undefined
+        return
       }
       const symbol = exchange.generateOrderbookSymbol(exchangeInfo.exchangeTokenInfo.exchangeToken)
-      const tokenQty = await exchange.getQtyFilter(symbol)
-      if (tokenQty) {
-        minQtyList.push(BigNumber(tokenQty.minQty))
-        stepSizeList.push(BigNumber(tokenQty.stepSize))
-      } else {
-        blogger.warn(`${this.traceId} chainToken: ${chainToken} tokenQty not found from exchange: ${exchange.exchangeName}, symbol: ${symbol}`)
+      try {
+        const tokenQty = await exchange.getQtyFilter(symbol)
+        if (!tokenQty) {
+          blogger.warn(`${this.traceId} chainToken: ${chainToken} tokenQty not found from exchange: ${exchange.exchangeName}, symbol: ${symbol}`)
+          return
+        }
+        const minQty = new BigNumber(tokenQty.minQty)
+        const stepSize = new BigNumber(tokenQty.stepSize)
+        if (minQty.isNaN() || stepSize.isNaN()) {
+          blogger.warn(`${this.traceId} chainToken: ${chainToken} tokenQty invalid number from exchange: ${exchange.exchangeName}, symbol: ${symbol}`)
+          return
+        }
+        maxMinQty = maxMinQty ? BigNumber.max(maxMinQty, minQty) : minQty
+        maxStepSize = maxStepSize ? BigNumber.max(maxStepSize, stepSize) : stepSize
+        validCount += 1
+      } catch (error) {
+        blogger.warn(`${this.traceId} chainToken: ${chainToken} tokenQty fetch failed from exchange: ${exchange.exchangeName}, symbol: ${symbol}, error: ${error}`)
       }
-    }
-    if (minQtyList.length < 2 || stepSizeList.length < 2) {
+    }))
+    if (validCount < 2 || !maxMinQty || !maxStepSize) {
       return undefined
     }
-    return { 
-      minQty: BigNumber.max(...minQtyList).toString(),
-      stepSize: BigNumber.max(...stepSizeList).toString()
+    return {
+      minQty: maxMinQty.toString(),
+      stepSize: maxStepSize.toString()
     }
   }
 }
