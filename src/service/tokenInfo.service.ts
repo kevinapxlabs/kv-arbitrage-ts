@@ -26,7 +26,8 @@ export type TExchangeToken = {
 
 export type TTokenInfo = {
   chainToken: TChainToken,
-  exchangeTokenList: TExchangeToken[]
+  // 按交易所ID索引的交易所token映射，方便快速定位指定交易所信息
+  exchangeTokenMap: Partial<Record<number, TExchangeToken>>
 }
 
 export type TExchangeTokenInfo = {
@@ -34,6 +35,10 @@ export type TExchangeTokenInfo = {
   exchangeTokenInfo: TExchangeToken
 }
 
+/**
+ * TokenInfoService 负责维护链上token与各交易所token之间的映射关系
+ * 包括缓存重建、Redis读取等能力，方便套利和资费等模块复用
+ */
 export class TokenInfoService {
 
   private static readonly TOKEN_INFO_TTL = 10 * 3600
@@ -151,6 +156,7 @@ export class TokenInfoService {
     const chainTokenById = new Map<number, TChainToken>()
     const tokenInfoByChainToken = new Map<string, TTokenInfo>()
 
+    // 初始化链token信息
     for (const token of tokenList) {
       if (token.isDeleted) continue
       const chainToken: TChainToken = {
@@ -161,12 +167,13 @@ export class TokenInfoService {
       chainTokenById.set(token.id, chainToken)
       tokenInfoByChainToken.set(chainToken.chainToken, {
         chainToken,
-        exchangeTokenList: []
+        exchangeTokenMap: {}
       })
     }
 
     const exchangeTokenInfoByKey = new Map<string, TExchangeTokenInfo>()
 
+    // 填充交易所token映射和双向索引
     for (const tokenExchange of tokenExchangeList) {
       if (tokenExchange.isDeleted) continue
       if (tokenExchange.tokenType !== tokenType) {
@@ -189,7 +196,8 @@ export class TokenInfoService {
 
       const tokenInfo = tokenInfoByChainToken.get(chainToken.chainToken)
       if (tokenInfo) {
-        tokenInfo.exchangeTokenList.push(exchangeToken)
+        // 以cexId为key快速定位交易所映射
+        tokenInfo.exchangeTokenMap[tokenExchange.cexId] = exchangeToken
       }
 
       const exchangeTokenInfo: TExchangeTokenInfo = {

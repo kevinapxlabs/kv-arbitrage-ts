@@ -61,11 +61,11 @@ export class FundingFeeMgr {
         blogger.error(`${this.traceId} chainToken: ${chainToken} getCurrentFundingFeeData not found in tokenInfoMap`)
         continue
       }
-      const exchangeTokenInfoList = exchangeInfo.exchangeTokenList
+      const exchangeTokenInfoMap = exchangeInfo.exchangeTokenMap
       for (let i = 0; i < exchangeList.length; i++) {
         const exchange = exchangeList[i]
         // 获取当前资费
-        const exchangeTokenInfo = exchangeTokenInfoList.find(item => item.cexId === exchange.cexId)
+        const exchangeTokenInfo = exchangeTokenInfoMap[exchange.cexId]
         if (!exchangeTokenInfo) {
           blogger.warn(`${this.traceId} exchangeTokenInfo not found, cexId: ${exchange.cexId}, chainToken: ${chainToken}, exchangeName: ${exchange.exchangeName}`)
           continue
@@ -90,19 +90,19 @@ export class FundingFeeMgr {
         blogger.error(`${this.traceId} chainToken: ${tokenKey} getCurrentFundingFeeData not found in tokenInfoMap`)
         continue
       }
-      const exchangeTokenInfoList = exchangeInfo.exchangeTokenList
+      const exchangeTokenInfoMap = exchangeInfo.exchangeTokenMap
       for (let i = 0; i < exchangeIndexList.length; i++) {
         const indexArray = exchangeIndexList[i]
         const baseExchangeIndex = indexArray[0]
         const quoteExchangeIndex = indexArray[1]
         const baseExchange = exchangeList[baseExchangeIndex]
-        const baseExchangeTokenInfo = exchangeTokenInfoList.find(item => item.cexId === baseExchange.cexId)
+        const baseExchangeTokenInfo = exchangeTokenInfoMap[baseExchange.cexId]
         if (!baseExchangeTokenInfo) {
           blogger.warn(`${this.traceId} baseExchangeTokenInfo not found, cexId: ${baseExchange.cexId}, chainToken: ${tokenKey}, exchangeName: ${baseExchange.exchangeName}`)
           continue
         }
         const quoteExchange = exchangeList[quoteExchangeIndex]
-        const quoteExchangeTokenInfo = exchangeTokenInfoList.find(item => item.cexId === quoteExchange.cexId)
+        const quoteExchangeTokenInfo = exchangeTokenInfoMap[quoteExchange.cexId]
         if (!quoteExchangeTokenInfo) {
           blogger.warn(`${this.traceId} quoteExchangeTokenInfo not found, cexId: ${quoteExchange.cexId}, chainToken: ${tokenKey}, exchangeName: ${quoteExchange.exchangeName}`)
           continue
