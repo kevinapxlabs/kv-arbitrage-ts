@@ -22,9 +22,10 @@ export type TAsterAccountInfo = {
 }
 
 export type TBackpackAccountInfo = {
-  imf: string
-  mmf: string
-  equity: string
+  imf: number
+  mmf: number
+  marginFraction: number
+  equity: number          // 净权益，不包含已实现盈亏
 }
 
 export type TAccountInfo = {

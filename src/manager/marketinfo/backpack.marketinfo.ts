@@ -2,11 +2,10 @@ import { blogger } from '../../common/base/logger.js';
 import { rdsClient } from '../../common/db/redis.js';
 import { RedisKeyMgr } from '../../common/redis.key.js';
 import { EExchange } from '../../common/exchange.enum.js';
-import { BackpackPublicApi } from '../../libs/backpack/backpack.public.api.js';
-import { BackpackMarket } from '../../libs/backpack/backpack.types.js';
 import { TSMap } from '../../libs/tsmap.js';
 import { intervalCache, qtyFilterCache } from '../../common/cache/interval.cache.js';
 import { TQtyFilter } from './maretinfo.type.js';
+import { BpxApiClient, Market } from '../../libs/bpxClient/index.js';
 
 const DEFAULT_MEMORY_TTL_SECONDS = 600; // 10 minutes
 const DEFAULT_REDIS_TTL_SECONDS = 3600; // 1 hour
@@ -15,7 +14,7 @@ const FUNDING_INTERVAL_REDIS_TTL_SECONDS = 24 * 60 * 60; // 24 hours
 
 type SymbolRuleMap = TSMap<string, TQtyFilter>;
 
-type BackpackMarketInfo = BackpackMarket[];
+type BackpackMarketInfo = Market[];
 
 export class BackpackMarketInfoMgr {
   /**
@@ -87,10 +86,13 @@ export class BackpackMarketInfoMgr {
       if (raw) {
         return JSON.parse(raw) as BackpackMarketInfo;
       }
-      const marketApi = new BackpackPublicApi();
-      const info = await marketApi.getMarkets();
+      const marketApi = new BpxApiClient({
+        apiKey: '',
+        apiSecret: ''
+      });
+      const info = await marketApi.markets.getMarkets();
       await rdsClient.set(marketInfoKey, JSON.stringify(info), DEFAULT_REDIS_TTL_SECONDS);
-      return info;
+      return info.data as BackpackMarketInfo;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       blogger.error('backpack market info fetch failed', message);
@@ -116,7 +118,7 @@ export class BackpackMarketInfoMgr {
   /**
    * 从市场信息生成单个交易对的交易规则
    */
-  private static buildRule(market: BackpackMarket): TQtyFilter {
+  private static buildRule(market: Market): TQtyFilter {
     const quantityFilter = market.filters?.quantity;
     const priceFilter = market.filters?.price;
 
@@ -141,11 +143,10 @@ export class BackpackMarketInfoMgr {
   /**
    * 判断市场是否可交易的永续合约
    */
-  private static isTradableFuture(market: BackpackMarket): boolean {
+  private static isTradableFuture(market: Market): boolean {
     return (
       market.marketType === 'PERP' &&
-      market.orderBookState === 'Open' &&
-      market.visible === true
+      market.orderBookState === 'Open'
     );
   }
 
@@ -177,7 +178,7 @@ export class BackpackMarketInfoMgr {
     }
   }
 
-  private static extractFundingInterval(market: BackpackMarket | undefined): number | undefined {
+  private static extractFundingInterval(market: Market | undefined): number | undefined {
     if (!market || market.fundingInterval === undefined || market.fundingInterval === null) {
       return undefined;
     }

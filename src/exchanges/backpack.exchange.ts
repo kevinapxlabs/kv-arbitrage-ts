@@ -2,15 +2,7 @@ import { blogger } from '../common/base/logger.js'
 import { EExchange, EExchangeCexId, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import type { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
 import type { ExchangeAdapter } from './exchange.adapter.js'
-import type { TAccountInfo, TBNKey, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
-import {
-  BackpackAccountApi,
-  BackpackTradingApi
-} from '../libs/backpack/index.js'
-import type {
-  BackpackFuturePositionWithMargin,
-  BackpackOrderStatus
-} from '../libs/backpack/backpack.types.js'
+import type { TAccountInfo, TBackpackAccountInfo, TBNKey, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
 import { BackpackMarketInfoMgr } from '../manager/marketinfo/backpack.marketinfo.js'
 import { TArbitrageConfig } from '../arbitrage/arbitrage.config.js'
 import { defiConfig } from '../config/config.js'
@@ -18,12 +10,13 @@ import { getKeyInfo } from '../utils/bnKey.js'
 import { EPositionDescrease } from '../common/types/exchange.type.js'
 import { TRiskDataInfo } from '../arbitrage/type.js'
 import { ExchangeDataMgr } from '../arbitrage/exchange.data.js'
+import { BpxApiClient, FuturePositionWithMargin, OrderStatus, OrderType, Side, TimeInForce } from '../libs/bpxClient/index.js'
 
-const COMPLETED_ORDER_STATUSES = new Set<BackpackOrderStatus>([
-  'Cancelled',
-  'Expired',
-  'Filled',
-  'TriggerFailed'
+const COMPLETED_ORDER_STATUSES = new Set<OrderStatus>([
+  OrderStatus.Cancelled,
+  OrderStatus.Expired,
+  OrderStatus.Filled,
+  OrderStatus.TriggerFailed
 ])
 
 interface BackpackOrderIdentifier {
@@ -79,16 +72,28 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
 
   async getAccountInfo(): Promise<TAccountInfo> {
     const keyInfo = this.getKeyInfo()
-    const accountApi = new BackpackAccountApi({
+    const accountApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
-      privateKey: keyInfo.secret
+      apiSecret: keyInfo.secret
     })
     try {
-      const summary = await accountApi.getMarginSummary()
+      const collateral = await accountApi.capital.getCollateral()
+      const backpackCollateral = collateral.data
+      const imf = backpackCollateral.imf
+      const mmf = backpackCollateral.mmf
+      const marginFraction = backpackCollateral.marginFraction
+      const netEquity = backpackCollateral.netEquity
+      const bpAccountInfo: TBackpackAccountInfo = {
+        imf: parseFloat(imf),
+        mmf: parseFloat(mmf),
+        marginFraction: parseFloat(marginFraction ?? '0'),
+        equity: parseFloat(netEquity),
+      }
+      
       return {
-        totalNetEquity: summary.netEquity,
-        totalPositiveNotional: summary.netExposureFutures ?? '0',
-        bpAccountInfo: null,
+        totalNetEquity: collateral.data.netEquity,
+        totalPositiveNotional: collateral.data.netExposureFutures ?? '0',
+        bpAccountInfo: bpAccountInfo,
         asterAccountInfo: null
       }
     } catch (error) {
@@ -99,13 +104,13 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
 
   async getPositions(): Promise<TKVPosition[]> {
     const keyInfo = this.getKeyInfo()
-    const tradingApi = new BackpackTradingApi({
+    const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
-      privateKey: keyInfo.secret
+      apiSecret: keyInfo.secret
     })
     try {
-      const positions = await tradingApi.getPositions()
-      return positions
+      const positions = await tradingApi.futures.getOpenPositions()
+      return positions.data
         .filter((position) => Number(position.netQuantity) !== 0)
         .map((position) => this.toKVPosition(position))
     } catch (error) {
@@ -132,19 +137,19 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
 
   async placeMarketOrder(symbol: string, side: EKVSide, quantity: string): Promise<string> {
     const keyInfo = this.getKeyInfo()
-    const tradingApi = new BackpackTradingApi({
+    const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
-      privateKey: keyInfo.secret
+      apiSecret: keyInfo.secret
     })
     try {
-      const response = await tradingApi.submitOrder({
+      const response = await tradingApi.order.executeOrder({
         symbol,
-        side: this.toOrderSide(side),
-        orderType: 'Market',
+        side: this.toOrderSide(side) as Side,
+        orderType: OrderType.Market,
         quantity,
-        timeInForce: 'GTC'
+        timeInForce: TimeInForce.GTC
       })
-      return response.id
+      return response.data.id
     } catch (error) {
       blogger.error('backpack placeMarketOrder failed', { symbol, side, quantity, error })
       throw this.ensureError(error)
@@ -153,20 +158,20 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
 
   async placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string): Promise<string> {
     const keyInfo = this.getKeyInfo()
-    const tradingApi = new BackpackTradingApi({
+    const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
-      privateKey: keyInfo.secret
+      apiSecret: keyInfo.secret
     })
     try {
-      const response = await tradingApi.submitOrder({
+      const response = await tradingApi.order.executeOrder({
         symbol,
-        side: this.toOrderSide(side),
-        orderType: 'Limit',
+        side: this.toOrderSide(side) as Side,
+        orderType: OrderType.Limit,
         quantity,
         price,
-        timeInForce: 'GTC'
+        timeInForce: TimeInForce.GTC
       })
-      return response.id
+      return response.data.id
     } catch (error) {
       blogger.error('backpack placeLimitOrder failed', { symbol, side, quantity, price, error })
       throw this.ensureError(error)
@@ -176,14 +181,14 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   async queryOrder(symbol: string, orderId: string): Promise<TQueryOrder> {
     const identifier = this.parseOrderIdentifier(orderId)
     const keyInfo = this.getKeyInfo()
-    const tradingApi = new BackpackTradingApi({
+    const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
-      privateKey: keyInfo.secret
+      apiSecret: keyInfo.secret
     })
     try {
-      const response = await tradingApi.getOrder({ symbol, ...identifier })
+      const response = await tradingApi.order.getOpenOrder({ symbol, ...identifier })
       return {
-        isCompleted: COMPLETED_ORDER_STATUSES.has(response.status),
+        isCompleted: COMPLETED_ORDER_STATUSES.has(response.data.status),
         result: response
       }
     } catch (error) {
@@ -195,13 +200,13 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   async cancelOrder(symbol: string, orderId: string): Promise<TCancelOrder> {
     const identifier = this.parseOrderIdentifier(orderId)
     const keyInfo = this.getKeyInfo()
-    const tradingApi = new BackpackTradingApi({
+    const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
-      privateKey: keyInfo.secret
+      apiSecret: keyInfo.secret
     })
     try {
-      const response = await tradingApi.cancelOrder({ symbol, ...identifier })
-      return { orderId: response.id ?? orderId }
+      const response = await tradingApi.order.cancelOpenOrder({ symbol, ...identifier })
+      return { orderId: response.data.id ?? orderId }
     } catch (error) {
       blogger.error('backpack cancelOrder failed', { symbol, orderId, error })
       throw this.ensureError(error)
@@ -241,7 +246,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     return { orderId }
   }
 
-  private toKVPosition(position: BackpackFuturePositionWithMargin): TKVPosition {
+  private toKVPosition(position: FuturePositionWithMargin): TKVPosition {
     return {
       exchangeName: this.exchangeName,
       symbol: position.symbol,
@@ -252,7 +257,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     }
   }
 
-  private deriveLeverage(position: BackpackFuturePositionWithMargin): string {
+  private deriveLeverage(position: FuturePositionWithMargin): string {
     const imf = Number(position.imf)
     if (Number.isFinite(imf) && imf > 0) {
       return (1 / imf).toString()
