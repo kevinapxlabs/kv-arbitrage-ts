@@ -8,7 +8,16 @@ import { TExchangeTokenInfo, TokenInfoService } from "../service/tokenInfo.servi
 import { ExchangeAdapter } from "../exchanges/exchange.adapter.js";
 import { TSMap } from "../libs/tsmap.js";
 
-const orderbookTimeDiff = 5 // 5秒
+const ORDERBOOK_STALE_THRESHOLD_MS = 5_000 // 5秒
+
+function safeJsonParse<T>(value: string, context: string): T | undefined {
+  try {
+    return JSON.parse(value) as T
+  } catch (error) {
+    blogger.error(`${context} JSON parse failed`, error)
+    return
+  }
+}
 
 export class ExchangeDataMgr {
   traceId: string
@@ -25,16 +34,24 @@ export class ExchangeDataMgr {
   */
   async getOrderBook(exchange: EExchange, symbol: string): Promise<TExchangeOrderbook | undefined> {
     const currentTime = Date.now()
-    let orderbooKey = RedisKeyMgr.FutureUOrderbookKey(exchange, symbol)
-    const orderbookStr = await rdsClient.get(orderbooKey)
+    const orderbookKey = RedisKeyMgr.FutureUOrderbookKey(exchange, symbol)
+    const orderbookStr = await rdsClient.get(orderbookKey)
     if (!orderbookStr) {
-      blogger.error(`${this.traceId} get ${exchange} OrderBook, key: ${orderbooKey} not found`)
+      blogger.error(`${this.traceId} get ${exchange} OrderBook, key: ${orderbookKey} not found`)
       return
     }
-    const orderbook = JSON.parse(orderbookStr) as TExchangeOrderbook
-    const updatetime = orderbook.updatetime
-    if (currentTime - updatetime > orderbookTimeDiff) {
-      blogger.warn(`${this.traceId} getOrderBook: ${orderbooKey} is too old, skip, updatetime: ${updatetime}, currentTime: ${currentTime}`)
+    const orderbook = safeJsonParse<TExchangeOrderbook>(orderbookStr, `${this.traceId} getOrderBook: key: ${orderbookKey}`)
+    if (!orderbook) {
+      return
+    }
+    const updateTimeSeconds = Number(orderbook.updatetime)
+    if (!Number.isFinite(updateTimeSeconds)) {
+      blogger.warn(`${this.traceId} getOrderBook: ${orderbookKey} has invalid updatetime: ${orderbook.updatetime}`)
+      return
+    }
+    const updateTime = updateTimeSeconds * 1_000
+    if (currentTime - updateTime > ORDERBOOK_STALE_THRESHOLD_MS) {
+      blogger.warn(`${this.traceId} getOrderBook: ${orderbookKey} is too old, skip, updatetime: ${updateTimeSeconds}, currentTime: ${currentTime}`)
       return
     }
     return orderbook
@@ -53,9 +70,21 @@ export class ExchangeDataMgr {
       blogger.error(`${this.traceId} getIndexPrice, key: ${tickerKey} not found`)
       return
     }
-    const ticker = JSON.parse(tickerStr) as TExchangeMarkprice
-    const indexPrice = BigNumber(ticker.indexPrice)
-    return indexPrice
+    const ticker = safeJsonParse<TExchangeMarkprice>(tickerStr, `${this.traceId} getIndexPrice: key: ${tickerKey}`)
+    if (!ticker) {
+      return
+    }
+    try {
+      const indexPrice = new BigNumber(ticker.indexPrice)
+      if (!indexPrice.isFinite()) {
+        blogger.warn(`${this.traceId} getIndexPrice: invalid indexPrice: ${ticker.indexPrice}, key: ${tickerKey}`)
+        return
+      }
+      return indexPrice
+    } catch (error) {
+      blogger.error(`${this.traceId} getIndexPrice: failed to parse indexPrice, key: ${tickerKey}`, error)
+    }
+    return
   }
 
   /*
@@ -96,8 +125,20 @@ export class ExchangeDataMgr {
       blogger.error(`getFundingFee, exchange: ${exchange}, symbol: ${symbol}, key: ${tickerKey} not found`)
       return
     }
-    const ticker = JSON.parse(tickerStr) as TExchangeFundingFee
-    const fundingFee = BigNumber(ticker.rate)
-    return fundingFee
+    const ticker = safeJsonParse<TExchangeFundingFee>(tickerStr, `getFundingFee: key: ${tickerKey}`)
+    if (!ticker) {
+      return
+    }
+    try {
+      const fundingFee = new BigNumber(ticker.rate)
+      if (!fundingFee.isFinite()) {
+        blogger.warn(`getFundingFee: invalid rate: ${ticker.rate}, key: ${tickerKey}`)
+        return
+      }
+      return fundingFee
+    } catch (error) {
+      blogger.error(`getFundingFee: failed to parse rate, key: ${tickerKey}`, error)
+    }
+    return
   }
 }
