@@ -17,16 +17,27 @@ import { TSMap } from "../libs/tsmap.js"
 import { ExchangeAdapter } from "../exchanges/exchange.adapter.js"
 import { TokenQtyMgr } from "./token.qty.js"
 
+type TPositionSummary = {
+  longSize: BigNumber
+  shortSize: BigNumber
+  longIndex?: number
+  shortIndex?: number
+}
+
 export class RebalanceMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
   arbitrageConfig: TArbitrageConfig
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
+  private readonly exchangeDataMgr: ExchangeDataMgr
+  private readonly tokenQtyMgr: TokenQtyMgr
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
     super(`${traceId} rebalance`)
     this.exchangeIndexMgr = exchangeIndexMgr
-    this.arbitrageConfig = arbitrageConfig,
+    this.arbitrageConfig = arbitrageConfig
     this.exchangeTokenInfoMap = exchangeTokenInfoMap
+    this.exchangeDataMgr = new ExchangeDataMgr(this.traceId)
+    this.tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
   }
 
   async toTg(rebalanceOrders: TRebalanceOrder[]) {
@@ -46,54 +57,40 @@ export class RebalanceMgr extends ArbitrageBase {
   }
 
   async rebalance(chainToken: string, positions: (TKVPosition | null)[]): Promise<TRebalanceOrder | undefined> {
-    // 1. 获取 做空交易所索引 和 做多交易所索引
-    const shortIndexList: number[] = [], longIndexList: number[] = []
-    let shortSize = BigNumber(0), longSize = BigNumber(0)
-    for(let i = 0; i < positions.length; i++) {
-      const p = positions[i]
-      if (p) {
-        // 按合约个数来计算两边持仓数量
-        if (BigNumber(p.positionAmt).lt(0)) {
-          shortIndexList.push(i)
-          shortSize = shortSize.plus(BigNumber(p.positionAmt))
-        } else {
-          longIndexList.push(i)
-          longSize = longSize.plus(BigNumber(p.positionAmt))
-        }
-      }
+    const positionSummary = this.summarizePositions(positions)
+    if (!positionSummary) {
+      return
     }
-    const shortSizeAbs = shortSize.abs()
-    // 2. 做多数量大于做空数量，需要平多
+    const { longSize, shortSize, longIndex, shortIndex } = positionSummary
     let exchange: ExchangeAdapter | undefined
     let side: EKVSide | undefined
     let diffSize = BigNumber(0)
     let exchangePositionAmt = BigNumber(0)
-    if (longSize.gt(shortSizeAbs)) {
-      diffSize = longSize.minus(shortSizeAbs)
+    if (longSize.gt(shortSize)) {
+      diffSize = longSize.minus(shortSize)
       side = EKVSide.SHORT
-      const takerIndex = longIndexList[0]
-      exchange = this.exchangeIndexMgr.exchangeList[takerIndex]
-      exchangePositionAmt = BigNumber(positions[takerIndex]?.positionAmt ?? 0)
-    } else if (longSize.lt(shortSizeAbs)) {
-      // 3. 做多数量小于做空数量，需要平空
-      diffSize = shortSizeAbs.minus(longSize)
+      if (longIndex !== undefined) {
+        exchange = this.exchangeIndexMgr.exchangeList[longIndex]
+        exchangePositionAmt = BigNumber(positions[longIndex]?.positionAmt ?? 0)
+      }
+    } else if (shortSize.gt(longSize)) {
+      diffSize = shortSize.minus(longSize)
       side = EKVSide.LONG
-      const takerIndex = shortIndexList[0]
-      exchange = this.exchangeIndexMgr.exchangeList[takerIndex]
-      exchangePositionAmt = BigNumber(positions[takerIndex]?.positionAmt ?? 0)
+      if (shortIndex !== undefined) {
+        exchange = this.exchangeIndexMgr.exchangeList[shortIndex]
+        exchangePositionAmt = BigNumber(positions[shortIndex]?.positionAmt ?? 0)
+      }
     }
     if (exchange && side && diffSize.gt(0)) {
       // 4. 检查是否taker单下单数量太大，最大下单数量按 REBLANCE_MAX_USD_AMOUNT 进行计算
-      const exchangeDataMgr = new ExchangeDataMgr(this.traceId)
-      const indexPrice = await exchangeDataMgr.getIndexPrice2(this.exchangeIndexMgr.exchangeList, chainToken, this.exchangeTokenInfoMap)
+      const indexPrice = await this.exchangeDataMgr.getIndexPrice2(this.exchangeIndexMgr.exchangeList, chainToken, this.exchangeTokenInfoMap)
       if (!indexPrice) {
         blogger.error(`${this.traceId} chainToken: ${chainToken}, rebalance failed, no index price`)
         return
       }
       let quantity = BigNumber(this.arbitrageConfig.REBALANCE_MAX_USD_AMOUNT).dividedBy(indexPrice)
       if (diffSize.gt(quantity)) {
-        const qtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
-        const qtyDec = await qtyMgr.getMinQtyDecimal(chainToken, this.exchangeTokenInfoMap)
+        const qtyDec = await this.tokenQtyMgr.getMinQtyDecimal(chainToken, this.exchangeTokenInfoMap)
         if (!qtyDec) {
           blogger.error(`${this.traceId} chainToken: ${chainToken}, rebalance failed, no qty decimal`)
           return
@@ -144,5 +141,42 @@ export class RebalanceMgr extends ArbitrageBase {
       }
     }
     return false
+  }
+
+  private summarizePositions(positions: (TKVPosition | null)[]): TPositionSummary | undefined {
+    let longSize = BigNumber(0)
+    let shortSize = BigNumber(0)
+    let longIndex: number | undefined
+    let shortIndex: number | undefined
+    for (let i = 0; i < positions.length; i++) {
+      const position = positions[i]
+      if (!position) {
+        continue
+      }
+      const positionAmt = BigNumber(position.positionAmt)
+      if (positionAmt.isZero()) {
+        continue
+      }
+      if (positionAmt.lt(0)) {
+        shortSize = shortSize.plus(positionAmt.abs())
+        if (shortIndex === undefined) {
+          shortIndex = i
+        }
+      } else {
+        longSize = longSize.plus(positionAmt)
+        if (longIndex === undefined) {
+          longIndex = i
+        }
+      }
+    }
+    if (longSize.isZero() && shortSize.isZero()) {
+      return undefined
+    }
+    return {
+      longSize,
+      shortSize,
+      longIndex,
+      shortIndex
+    }
   }
 }
