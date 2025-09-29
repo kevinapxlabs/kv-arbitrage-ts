@@ -35,7 +35,7 @@ type AsterOrderIdentifier = { orderId?: number; origClientOrderId?: string }
 
 export class AsterExchangeAdapter implements ExchangeAdapter {
   readonly traceId: string
-  readonly id = EExchangeId.Aster
+  readonly exchangeId = EExchangeId.Aster
   readonly cexId = EExchangeCexId.Aster
   readonly exchangeName = EExchange.Aster
   readonly settlementAsset = 'USDT'
