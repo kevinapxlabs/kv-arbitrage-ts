@@ -13,40 +13,59 @@ const DEFAULT_LEVERAGE = 5
  * 调整到默认杠杆
  */
 export class LeverageMgr extends ArbitrageBase {
-  private exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
+  private readonly exchangeTokenInfoLookup: Map<string, TExchangeTokenInfo>
 
   constructor(traceId: string, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
     super(traceId)
-    this.exchangeTokenInfoMap = exchangeTokenInfoMap
+    this.exchangeTokenInfoLookup = new Map<string, TExchangeTokenInfo>()
+
+    // 展平 TSMap 到原生 Map 方便快速检索
+    exchangeTokenInfoMap.forEach((exchangeTokenInfo, key) => {
+      if (typeof key === 'string') {
+        this.exchangeTokenInfoLookup.set(key, exchangeTokenInfo)
+      }
+    })
   }
 
   async run(exchangeList: ExchangeAdapter[], riskData: TRiskDataInfo) {
     const { chainTokenPositionMap } = riskData
-    const chainTokenList = chainTokenPositionMap.keys()
-    for (const chainToken of chainTokenList) {
-      const chainTokenPosition = chainTokenPositionMap.get(chainToken)
-      if (!chainTokenPosition) {
+    const chainTokens = chainTokenPositionMap.keys()
+    const chainTokenPositions = chainTokenPositionMap.values()
+    // 预构建交易所名称索引，避免通过数组下标关联
+    const exchangeByName = new Map(exchangeList.map(exchange => [exchange.exchangeName, exchange]))
+
+    for (let index = 0; index < chainTokens.length; index++) {
+      const chainToken = chainTokens[index]
+      const chainTokenPosition = chainTokenPositions[index]
+      if (!chainToken || !chainTokenPosition) {
         continue
       }
-      const positions = chainTokenPosition.positions
-      for (let i = 0; i < positions.length; i++) {
-        const position = positions[i]
+
+      for (const position of chainTokenPosition.positions) {
         if (!position) {
           continue
         }
-        const leverage = position.leverage
-        if (!BigNumber(position.leverage).eq(DEFAULT_LEVERAGE)) {
-          const exchange = exchangeList[i]
-          const key = TokenInfoService.getExchangeTokenKey(exchange.exchangeName, chainToken)
-          const exchangeInfo = this.exchangeTokenInfoMap.get(key)
-          if (!exchangeInfo) {
-            blogger.error(`${this.traceId} chainToken: ${chainToken} not found in exchangeTokenInfoMap, key: ${key}`)
-            continue
-          }
-          const symbol = exchange.generateExchangeSymbol(exchangeInfo.exchangeTokenInfo.exchangeToken)
-          blogger.info(`${this.traceId} set leverage, exchange: ${exchange.exchangeName}, symbol: ${symbol}, leverage: ${leverage} -> ${DEFAULT_LEVERAGE}`)
-          await exchange.ensureLeverage(symbol, DEFAULT_LEVERAGE)
+
+        if (new BigNumber(position.leverage).eq(DEFAULT_LEVERAGE)) {
+          continue
         }
+
+        const exchange = exchangeByName.get(position.exchangeName)
+        if (!exchange) {
+          blogger.error(`${this.traceId} exchange: ${position.exchangeName} not found while setting leverage for ${chainToken}`)
+          continue
+        }
+
+        const key = TokenInfoService.getExchangeTokenKey(exchange.exchangeName, chainToken)
+        const exchangeInfo = this.exchangeTokenInfoLookup.get(key)
+        if (!exchangeInfo) {
+          blogger.error(`${this.traceId} chainToken: ${chainToken} not found in exchangeTokenInfoMap, key: ${key}`)
+          continue
+        }
+
+        const symbol = exchange.generateExchangeSymbol(exchangeInfo.exchangeTokenInfo.exchangeToken)
+        blogger.info(`${this.traceId} set leverage, exchange: ${exchange.exchangeName}, symbol: ${symbol}, leverage: ${position.leverage} -> ${DEFAULT_LEVERAGE}`)
+        await exchange.ensureLeverage(symbol, DEFAULT_LEVERAGE)
       }
     }
   }
