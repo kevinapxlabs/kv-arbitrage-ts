@@ -26,4 +26,8 @@ export class RedisKeyMgr {
   static arbitrageConfigKey(key: string) {
     return `APX:${key.toUpperCase()}:ARBITRAGE:CONFIG`
   }
+
+  static positionOpenTimestampKey(chainToken: string, baseExchange: string, quoteExchange: string) {
+    return `KV:POSITION:OPEN:TIMESTAMP:${chainToken}:${baseExchange}:${quoteExchange}`
+  }
 }

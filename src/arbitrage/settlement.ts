@@ -1,6 +1,7 @@
 import BigNumber from "bignumber.js"
 import { EKVSide, EOrderReason } from "../common/exchange.enum.js"
 import { blogger } from "../common/base/logger.js"
+import { rdsClient } from "../common/db/redis.js"
 import { TCoinData, TOrderParams } from "../common/types/exchange.type.js"
 import { TKVPosition } from "../exchanges/types.js"
 import { sendMsg } from "../utils/bot.js"
@@ -16,6 +17,7 @@ import { calculateValidQuantity } from "../utils/utils.js"
 import { ExchangeDataMgr } from "./exchange.data.js"
 import { TArbitrageConfig } from "./arbitrage.config.js"
 import { TExchangeTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js"
+import { RedisKeyMgr } from "../common/redis.key.js"
 import { TSMap } from "../libs/tsmap.js"
 
 export class SettlementMgr extends ArbitrageBase {
@@ -24,6 +26,7 @@ export class SettlementMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
   orderTakerMgr: OrderTakerMgr
+  private readonly maxHoldingMs = 24 * 60 * 60 * 1000
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
     super(`${traceId} profit locked`)
@@ -33,13 +36,84 @@ export class SettlementMgr extends ArbitrageBase {
     this.orderTakerMgr = new OrderTakerMgr(this.traceId, EOrderReason.PROFIT_LOCKED)
   }
 
+  private composePositionKey(chainToken: string, baseExchange: string, quoteExchange: string): string {
+    return `${chainToken}|${baseExchange}|${quoteExchange}`
+  }
+
+  /* 获取持仓时间
+  * 若redis无数据则视为持仓时间过长，返回0；否则返回redis记录的持仓时长
+  * @param chainToken 币种
+  * @param baseExchange 基础交易所
+  * @param quoteExchange 报价交易所
+  * @returns 持仓时间 最新开仓时间 秒级时间戳
+  */
+  private async getPositionOpenedAt(chainToken: string, baseExchange: ExchangeAdapter, quoteExchange: ExchangeAdapter): Promise<number> {
+    const redisKey = RedisKeyMgr.positionOpenTimestampKey(chainToken, baseExchange.exchangeName, quoteExchange.exchangeName)
+    try {
+      const value = await rdsClient.get(redisKey)
+      if (!value) {
+        return 0
+      }
+      let openedAt = Number(value)
+      if (!Number.isFinite(openedAt) || openedAt <= 0) {
+        blogger.warn(`${this.traceId} invalid position open timestamp, redisKey: ${redisKey}, value: ${value}`)
+        return 0
+      }
+      if (openedAt < 1e12) {
+        openedAt = openedAt
+      }
+      return openedAt
+    } catch (error) {
+      blogger.error(`${this.traceId} getPositionOpenedAt error, redisKey: ${redisKey}, error: ${error instanceof Error ? error.message : error}`)
+      return 0
+    }
+  }
+
+  // 若redis无数据则视为持仓时间过长，返回0；否则返回redis记录的持仓时长
+  private async getHoldDurationMs(chainToken: string, baseExchange: ExchangeAdapter, quoteExchange: ExchangeAdapter): Promise<number> {
+    const now = Date.now()
+    const openedAt = await this.getPositionOpenedAt(chainToken, baseExchange, quoteExchange)
+    if (openedAt > now) {
+      return 0
+    }
+    return now - openedAt
+  }
+
+  private buildFundingFeeMap(fundingFeeData: TCoinData[]): Map<string, TCoinData> {
+    const fundingFeeMap = new Map<string, TCoinData>()
+    for (const item of fundingFeeData) {
+      const forwardKey = this.composePositionKey(item.chainToken, item.baseExchange, item.quoteExchange)
+      fundingFeeMap.set(forwardKey, item)
+    }
+    return fundingFeeMap
+  }
+
+  // 根据持仓时长和资费差动态计算当前需要满足的利差阈值
+  private computeRequiredSpreadBps(holdDurationMs: number, fundingDiffBps: number | undefined): number {
+    const minBps = this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MIN
+    const maxBps = this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX
+    if (maxBps <= minBps) {
+      return minBps
+    }
+    const range = maxBps - minBps
+    let startingThreshold = maxBps
+    if (fundingDiffBps !== undefined && Number.isFinite(fundingDiffBps)) {
+      const cappedFunding = Math.max(-range, Math.min(range, fundingDiffBps))
+      startingThreshold = Math.max(minBps, Math.min(maxBps, maxBps + cappedFunding))
+    }
+    const holdRatio = Math.max(0, Math.min(holdDurationMs / this.maxHoldingMs, 1))
+    const threshold = minBps + (startingThreshold - minBps) * (1 - holdRatio)
+    return Math.max(minBps, Math.min(maxBps, threshold))
+  }
+
   // 检查是否达到 profit 最小要求
   async hasProfitCheck(
     chainToken: string,
     btExchange: ExchangeAdapter,
     btPosition: TKVPosition,
     qtExchange: ExchangeAdapter,
-    qtPosition: TKVPosition
+    qtPosition: TKVPosition,
+    fundingData: TCoinData | undefined,
   ): Promise<TOrderParams | undefined> {
     const trace2 = `chainToken: ${chainToken}, btEx: ${btExchange.exchangeName}, qtEx: ${qtExchange.exchangeName}`
     // 1. 检查两边持仓方向是否相反
@@ -92,8 +166,12 @@ export class SettlementMgr extends ArbitrageBase {
       blogger.info(`${this.traceId}, ${trace2}, priceDelta not found, exchange: ${btExchange.exchangeName}`)
       return
     }
-    if (priceDelta < this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX) {
-      blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} less than ${this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX}, not increase position`)
+    const holdDurationMs = await this.getHoldDurationMs(chainToken, btExchange, qtExchange)   // 记录该组合的持仓时长，用于动态阈值
+    const holdHours = holdDurationMs / (60 * 60 * 1000)
+    const fundingDiffBps = fundingData ? fundingData.total.toNumber() : undefined
+    const requiredDelta = this.computeRequiredSpreadBps(holdDurationMs, fundingDiffBps)
+    if (priceDelta < requiredDelta) {
+      blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} below required ${requiredDelta}, holdHours: ${holdHours.toFixed(2)}, fundingDiffBps: ${fundingDiffBps}`)
       return
     }
     const price = await exchangeDataMgr.getIndexPrice2([btExchange, qtExchange], chainToken, this.exchangeTokenInfoMap)
@@ -101,7 +179,10 @@ export class SettlementMgr extends ArbitrageBase {
       blogger.info(`${this.traceId} ${trace2}, price not found, exchange: ${btExchange.exchangeName}`)
       return
     }
-    blogger.info(`${this.traceId} ${trace2}, price delta is ok, symbol: ${btSymbol}, price delta: ${priceDelta}, price var ${this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX}, btPosition: ${JSON.stringify(btPosition)}, qtPosition: ${JSON.stringify(qtPosition)}`)
+    if (holdDurationMs >= this.maxHoldingMs) {
+      blogger.warn(`${this.traceId} ${trace2}, holding time ${holdHours.toFixed(2)}h exceeded limit, using min delta ${this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MIN}`)
+    }
+    blogger.info(`${this.traceId} ${trace2}, price delta ok, symbol: ${btSymbol}, price delta: ${priceDelta}, required delta: ${requiredDelta}, holdHours: ${holdHours.toFixed(2)}, fundingDiffBps: ${fundingDiffBps}, btPosition: ${JSON.stringify(btPosition)}, qtPosition: ${JSON.stringify(qtPosition)}`)
     const quantity = ParamsMgr.USD_AMOUNT_EVERY_ORDER.dividedBy(price)
     let newQuantity = quantity
     // 7. 如果btPosition 或 qtPosition 的positionAmt 小于 quantity * 2，则使用 positionAmt 作为新的quantity
@@ -170,6 +251,7 @@ export class SettlementMgr extends ArbitrageBase {
     const tokenKeys = riskData.chainTokenPositionMap.keys()
     // 1. 检查是否达到 profit 最小要求
     if (tokenKeys.length > 0) {
+      const fundingFeeMap = this.buildFundingFeeMap(fundingFeeData)  // 便于快速定位两交易所之间的资费差
       const orderPromises = []
       for(const baseToken of tokenKeys) {
         const baseTokenPosition = riskData.chainTokenPositionMap.get(baseToken)
@@ -183,7 +265,9 @@ export class SettlementMgr extends ArbitrageBase {
           if (btPosition && qtPosition) {
             const btExchange = this.exchangeIndexMgr.exchangeList[indexList[0]]
             const qtExchange = this.exchangeIndexMgr.exchangeList[indexList[1]]
-            orderPromises.push(this.hasProfitCheck(baseToken, btExchange, btPosition, qtExchange, qtPosition))
+            const positionKey = this.composePositionKey(baseToken, btExchange.exchangeName, qtExchange.exchangeName)
+            const fundingData = fundingFeeMap.get(positionKey)
+            orderPromises.push(this.hasProfitCheck(baseToken, btExchange, btPosition, qtExchange, qtPosition, fundingData))
           }
         }
       }
