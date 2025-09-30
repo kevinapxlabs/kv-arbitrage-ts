@@ -12,7 +12,6 @@ import { ParamsMgr } from "./params.js"
 import { TRiskDataInfo } from "./type.js"
 import { UtilsMgr } from "./utils.js"
 import { calculateValidQuantity } from "../utils/utils.js"
-import { ExchangeDataMgr } from "./exchange.data.js"
 import { sendMsg } from "../utils/bot.js"
 import { TArbitrageConfig } from "./arbitrage.config.js"
 import { TSMap } from "../libs/tsmap.js"
@@ -22,7 +21,6 @@ export class DecreaseMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
   arbitrageConfig: TArbitrageConfig
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
-  private readonly exchangeDataMgr: ExchangeDataMgr
   private readonly tokenQtyMgr: TokenQtyMgr
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
@@ -30,7 +28,6 @@ export class DecreaseMgr extends ArbitrageBase {
     this.exchangeIndexMgr = exchangeIndexMgr
     this.arbitrageConfig = arbitrageConfig
     this.exchangeTokenInfoMap = exchangeTokenInfoMap
-    this.exchangeDataMgr = new ExchangeDataMgr(traceId)
     this.tokenQtyMgr = new TokenQtyMgr(traceId, this.exchangeIndexMgr)
   }
 
@@ -88,8 +85,9 @@ export class DecreaseMgr extends ArbitrageBase {
 
     const baseAdapter = this.exchangeIndexMgr.exchangeList[baseExchangeIndex]
     const quoteAdapter = this.exchangeIndexMgr.exchangeList[quoteExchangeIndex]
+    const exchangeDataMgr = this.getExchangeDataMgr()
     const baseSymbol = baseAdapter.generateOrderbookSymbol(baseExchangeToken)
-    const orderbook = await this.exchangeDataMgr.getOrderBook(baseAdapter.exchangeName, baseSymbol)
+    const orderbook = await exchangeDataMgr.getOrderBook(baseAdapter.exchangeName, baseSymbol)
     if (!orderbook) {
       blogger.info(`${this.traceId} ${trace2}, orderbook ${baseSymbol} not found, exchange: ${baseExchange}`)
       return

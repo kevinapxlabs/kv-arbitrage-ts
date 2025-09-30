@@ -14,7 +14,6 @@ import { ExchangeAdapter } from "../exchanges/exchange.adapter.js"
 import { OrderTakerMgr } from "./order.taker.js"
 import { ExchangeIndexMgr } from "./exchange.index.js"
 import { calculateValidQuantity } from "../utils/utils.js"
-import { ExchangeDataMgr } from "./exchange.data.js"
 import { TArbitrageConfig } from "./arbitrage.config.js"
 import { TExchangeTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js"
 import { RedisKeyMgr } from "../common/redis.key.js"
@@ -27,6 +26,7 @@ export class SettlementMgr extends ArbitrageBase {
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
   orderTakerMgr: OrderTakerMgr
   private readonly maxHoldingSeconds = 24 * 60 * 60
+  private readonly tokenQtyMgr: TokenQtyMgr
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
     super(`${traceId} profit locked`)
@@ -34,6 +34,7 @@ export class SettlementMgr extends ArbitrageBase {
     this.arbitrageConfig = arbitrageConfig
     this.exchangeTokenInfoMap = exchangeTokenInfoMap
     this.orderTakerMgr = new OrderTakerMgr(this.traceId, EOrderReason.PROFIT_LOCKED)
+    this.tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
   }
 
   private composePositionKey(chainToken: string, baseExchange: string, quoteExchange: string): string {
@@ -151,8 +152,7 @@ export class SettlementMgr extends ArbitrageBase {
     }
     const quoteExchangeToken = quoteExchangeTokenInfo.exchangeTokenInfo.exchangeToken
     // 4. 获取bp和bn的 qtyDecimal, 并取最小值
-    const tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
-    const tokenQty = await tokenQtyMgr.getMinQtyDecimal(chainToken, this.exchangeTokenInfoMap)
+    const tokenQty = await this.tokenQtyMgr.getMinQtyDecimal(chainToken, this.exchangeTokenInfoMap)
     if (!tokenQty) {
       blogger.info(`${this.traceId} ${trace2}, no token qty, exchange: ${btExchange}`)
       return
@@ -160,7 +160,7 @@ export class SettlementMgr extends ArbitrageBase {
     // 5. 根据backpack与binance的orderbook，计算是否达到price decimal
     // 5.1 获取orderbook
     const btSymbol = btExchange.generateOrderbookSymbol(baseExchangeToken)
-    const exchangeDataMgr = new ExchangeDataMgr(this.traceId)
+    const exchangeDataMgr = this.getExchangeDataMgr()
     const btOrderbook = await exchangeDataMgr.getOrderBook(btExchange.exchangeName, btSymbol)
     if (!btOrderbook) {
       blogger.info(`${this.traceId} ${trace2}, orderbook ${btSymbol} not found, exchange: ${btExchange.exchangeName}`)

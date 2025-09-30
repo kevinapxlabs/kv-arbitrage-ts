@@ -1,4 +1,4 @@
-import { BigNumber } from "bignumber.js"
+import BigNumber from "bignumber.js"
 import { blogger } from "../common/base/logger.js"
 import { TRebalanceOrder } from "../common/types/exchange.type.js"
 import { TKVPosition } from "../exchanges/types.js"
@@ -28,7 +28,6 @@ export class RebalanceMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
   arbitrageConfig: TArbitrageConfig
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
-  private readonly exchangeDataMgr: ExchangeDataMgr
   private readonly tokenQtyMgr: TokenQtyMgr
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
@@ -36,7 +35,6 @@ export class RebalanceMgr extends ArbitrageBase {
     this.exchangeIndexMgr = exchangeIndexMgr
     this.arbitrageConfig = arbitrageConfig
     this.exchangeTokenInfoMap = exchangeTokenInfoMap
-    this.exchangeDataMgr = new ExchangeDataMgr(this.traceId)
     this.tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
   }
 
@@ -83,7 +81,7 @@ export class RebalanceMgr extends ArbitrageBase {
     }
     if (exchange && side && diffSize.gt(0)) {
       // 4. 检查是否taker单下单数量太大，最大下单数量按 REBLANCE_MAX_USD_AMOUNT 进行计算
-      const indexPrice = await this.exchangeDataMgr.getIndexPrice2(this.exchangeIndexMgr.exchangeList, chainToken, this.exchangeTokenInfoMap)
+      const indexPrice = await this.getExchangeDataMgr().getIndexPrice2(this.exchangeIndexMgr.exchangeList, chainToken, this.exchangeTokenInfoMap)
       if (!indexPrice) {
         blogger.error(`${this.traceId} chainToken: ${chainToken}, rebalance failed, no index price`)
         return

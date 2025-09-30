@@ -8,7 +8,6 @@ import { TSMap } from "../libs/tsmap.js"
 import { sendMsg } from "../utils/bot.js"
 import { calculateValidQuantity } from "../utils/utils.js"
 import { ArbitrageBase } from "./base.js"
-import { ExchangeDataMgr } from "./exchange.data.js"
 import { ExchangeIndexMgr } from "./exchange.index.js"
 import { OrderTakerMgr } from "./order.taker.js"
 import { ParamsMgr } from "./params.js"
@@ -22,6 +21,10 @@ export class OpportunityMgr extends ArbitrageBase {
   arbitrageConfig: TArbitrageConfig
   tokenInfoMap: TSMap<string, TTokenInfo>
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
+  private readonly bannedTokenSet: Set<string>
+  private readonly stableTokenSet: Set<string>
+  private readonly tokenQtyMgr: TokenQtyMgr
+  private readonly orderTakerMgr: OrderTakerMgr
 
   constructor(
     traceId: string,
@@ -35,15 +38,16 @@ export class OpportunityMgr extends ArbitrageBase {
     this.arbitrageConfig = arbitrageConfig
     this.tokenInfoMap = tokenInfoMap
     this.exchangeTokenInfoMap = exchangeTokenInfoMap
+    this.bannedTokenSet = new Set(arbitrageConfig.TOKEN_BANNED_LIST.map((item) => item.toUpperCase()))
+    this.stableTokenSet = new Set(ParamsMgr.Stable_TOKEN_LIST.map((item) => item.toUpperCase()))
+    this.tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
+    this.orderTakerMgr = new OrderTakerMgr(this.traceId, EOrderReason.DEFAULT)
   }
 
   // 检查是否在禁止或稳定币列表
   private isTokenForbidden(chainToken: string): boolean {
     const upperToken = chainToken.toUpperCase()
-    if (this.arbitrageConfig.TOKEN_BANNED_LIST.includes(upperToken)) {
-      return true
-    }
-    return ParamsMgr.Stable_TOKEN_LIST.includes(upperToken)
+    return this.bannedTokenSet.has(upperToken) || this.stableTokenSet.has(upperToken)
   }
 
   private hasPosition(position: TKVPosition | null | undefined): boolean {
@@ -157,12 +161,11 @@ export class OpportunityMgr extends ArbitrageBase {
       return
     }
 
-    const tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
-    const orderTakerMgr = new OrderTakerMgr(this.traceId, EOrderReason.DEFAULT)
-    const exchangeDataMgr = new ExchangeDataMgr(this.traceId)
+    const exchangeDataMgr = this.getExchangeDataMgr()
     const plannedNewTokens = new Map<number, Set<string>>()
     const executedOrders: TOrderParams[] = []
     const maxTokenNotional = BigNumber(this.arbitrageConfig.MAX_USD_EXCHANGE_AMOUNT_TOKEN)
+    const priceDeltaThreshold = this.arbitrageConfig.PRICE_DELTA_BPS
     for (const chainToken of this.tokenInfoMap.keys()) {
       if (remainingOrders <= 0) {
         break
@@ -172,14 +175,11 @@ export class OpportunityMgr extends ArbitrageBase {
       }
 
       const tokenPosition = riskData.chainTokenPositionMap.get(chainToken)
-      const exchangeNotional = new Map<number, BigNumber>()
-      for (let i = 0; i < exchangeList.length; i++) {
-        const position = tokenPosition?.positions?.[i] ?? null
-        const notional = BigNumber(position?.notional ?? 0)
-        exchangeNotional.set(i, notional)
-      }
+      const exchangeNotionals = tokenPosition
+        ? tokenPosition.positions.map((position) => BigNumber(position?.notional ?? 0))
+        : []
 
-      const tokenQty = await tokenQtyMgr.getMinQtyDecimal(chainToken, this.exchangeTokenInfoMap)
+      const tokenQty = await this.tokenQtyMgr.getMinQtyDecimal(chainToken, this.exchangeTokenInfoMap)
       if (!tokenQty) {
         blogger.info(`${this.traceId} chainToken ${chainToken} missing quantity filter, skip`)
         continue
@@ -202,8 +202,8 @@ export class OpportunityMgr extends ArbitrageBase {
         const baseHasPosition = this.hasPosition(basePosition)
         const quoteHasPosition = this.hasPosition(quotePosition)
 
-        const baseNotional = exchangeNotional.get(baseIndex) ?? BigNumber(0)
-        const quoteNotional = exchangeNotional.get(quoteIndex) ?? BigNumber(0)
+        const baseNotional = exchangeNotionals[baseIndex] ?? BigNumber(0)
+        const quoteNotional = exchangeNotionals[quoteIndex] ?? BigNumber(0)
         if (baseNotional.gte(maxTokenNotional) || quoteNotional.gte(maxTokenNotional)) {
           continue
         }
@@ -222,9 +222,9 @@ export class OpportunityMgr extends ArbitrageBase {
         }
 
         let executeSide: EKVSide | undefined
-        if (priceDelta > this.arbitrageConfig.PRICE_DELTA_BPS) {
+        if (priceDelta > priceDeltaThreshold) {
           executeSide = EKVSide.LONG
-        } else if (priceDelta < 0 && Math.abs(priceDelta) > this.arbitrageConfig.PRICE_DELTA_BPS) {
+        } else if (priceDelta < -priceDeltaThreshold) {
           executeSide = EKVSide.SHORT
         }
 
@@ -246,7 +246,7 @@ export class OpportunityMgr extends ArbitrageBase {
 
         blogger.info(`${this.traceId} ${trace2}, priceDelta: ${priceDelta}, quantity: ${quantity}, side: ${executeSide}`)
 
-        await orderTakerMgr.createOrderTaker(baseExchange, baseToken, quoteExchange, quoteToken, executeSide, quantity, false)
+        await this.orderTakerMgr.createOrderTaker(baseExchange, baseToken, quoteExchange, quoteToken, executeSide, quantity, false)
         executedOrders.push({
           chainToken,
           baseExchange,

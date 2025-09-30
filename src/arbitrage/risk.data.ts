@@ -1,9 +1,8 @@
-import { BigNumber } from "bignumber.js";
+import BigNumber from "bignumber.js";
 import { TSMap } from "../libs/tsmap.js";
 import { TAccountInfo, TKVPosition } from "../exchanges/types.js";
 import { ArbitrageBase } from "./base.js";
 import { TExchangeRiskInfo, TRiskDataInfo, TTokenNotional, TTokenPosition } from "./type.js";
-import { ExchangeDataMgr } from "./exchange.data.js";
 import { blogger } from "../common/base/logger.js";
 import { ExchangeIndexMgr } from "./exchange.index.js";
 import { TExchangeTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js";
@@ -46,7 +45,7 @@ export class RiskDataMgr extends ArbitrageBase {
   async getTokenNotional(chainToken: string, positions: (TKVPosition | null)[]): Promise<TTokenNotional[]> {
     const tokenNotionalList: TTokenNotional[] = Array.from({ length: this.exchangeIndexMgr.exchangeList.length }, () => this.tokenNotionalInit(chainToken))
     // 获取chainToken的indexPrice
-    const exchangeDataMgr = new ExchangeDataMgr(this.traceId)
+    const exchangeDataMgr = this.getExchangeDataMgr()
     const indexPrice = await exchangeDataMgr.getIndexPrice2(this.exchangeIndexMgr.exchangeList, chainToken, this.exchangeTokenInfoMap)
     if (!indexPrice) {
       return tokenNotionalList

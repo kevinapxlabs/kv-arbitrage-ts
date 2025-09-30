@@ -7,9 +7,18 @@ import { ExchangeAdapter } from "../exchanges/exchange.adapter.js"
 
 export class ArbitrageBase {
   traceId: string
+  private exchangeDataMgr?: ExchangeDataMgr
 
   constructor(traceId: string) {
     this.traceId = traceId
+  }
+
+  protected getExchangeDataMgr(): ExchangeDataMgr {
+    // ExchangeDataMgr embeds traceId in log context, refresh when traceId changes
+    if (!this.exchangeDataMgr) {
+      this.exchangeDataMgr = new ExchangeDataMgr(this.traceId)
+    }
+    return this.exchangeDataMgr
   }
 
   /*
@@ -22,7 +31,7 @@ export class ArbitrageBase {
   */
   async getPriceDelta(trace2: string, side: EKVSide, baseExchangeToken: string, baseExchange: ExchangeAdapter, quoteExchangeToken: string, quoteExchange: ExchangeAdapter): Promise<number | undefined> {
     const baseSymbol = baseExchange.generateOrderbookSymbol(baseExchangeToken)
-    const exchangeDataMgr = new ExchangeDataMgr(this.traceId)
+    const exchangeDataMgr = this.getExchangeDataMgr()
     const baseOrderbook = await exchangeDataMgr.getOrderBook(baseExchange.exchangeName, baseSymbol)
     if (!baseOrderbook) {
       blogger.info(`${this.traceId} ${trace2}, orderbook ${baseSymbol} not found, exchange: ${baseExchange.exchangeName}`)

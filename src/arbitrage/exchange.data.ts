@@ -1,4 +1,4 @@
-import { BigNumber } from "bignumber.js"
+import BigNumber from "bignumber.js"
 import { blogger } from "../common/base/logger.js";
 import { EExchange } from "../common/exchange.enum.js";
 import { rdsClient } from "../common/db/redis.js";
