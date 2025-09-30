@@ -154,7 +154,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     }
   }
 
-  async placeMarketOrder(symbol: string, side: EKVSide, quantity: string): Promise<string> {
+  async placeMarketOrder(symbol: string, side: EKVSide, quantity: string, reduceOnly: boolean): Promise<string> {
     const keyInfo = this.getKeyInfo()
     const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
@@ -166,6 +166,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
         side: this.toOrderSide(side) as Side,
         orderType: OrderType.Market,
         quantity,
+        reduceOnly,
         timeInForce: TimeInForce.GTC
       })
       return response.data.id
@@ -175,7 +176,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     }
   }
 
-  async placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string): Promise<string> {
+  async placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string, reduceOnly: boolean): Promise<string> {
     const keyInfo = this.getKeyInfo()
     const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
@@ -188,6 +189,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
         orderType: OrderType.Limit,
         quantity,
         price,
+        reduceOnly,
         timeInForce: TimeInForce.GTC
       })
       return response.data.id

@@ -15,6 +15,8 @@ import { TokenQtyMgr } from "./token.qty.js"
 import { TArbitrageConfig } from "./arbitrage.config.js"
 import { TRiskDataInfo } from "./type.js"
 import { TExchangeTokenInfo, TTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js"
+import { RedisKeyMgr } from "../common/redis.key.js"
+import { rdsClient } from "../common/db/redis.js"
 
 export class OpportunityMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
@@ -232,12 +234,14 @@ export class OpportunityMgr extends ArbitrageBase {
           continue
         }
 
+        // 获取指数价格
         const indexPrice = await exchangeDataMgr.getIndexPrice2([baseExchange, quoteExchange], chainToken, this.exchangeTokenInfoMap)
         if (!indexPrice) {
           blogger.info(`${this.traceId} ${trace2}, index price not found`)
           continue
         }
 
+        // 计算下单数量
         const quantity = this.calculateOrderQuantity(indexPrice, tokenQty)
         if (!quantity) {
           blogger.info(`${this.traceId} ${trace2}, valid quantity not found`)
@@ -246,7 +250,15 @@ export class OpportunityMgr extends ArbitrageBase {
 
         blogger.info(`${this.traceId} ${trace2}, priceDelta: ${priceDelta}, quantity: ${quantity}, side: ${executeSide}`)
 
+        // 下单
         await this.orderTakerMgr.createOrderTaker(baseExchange, baseToken, quoteExchange, quoteToken, executeSide, quantity, false)
+
+        // 下单时间存储到缓存中
+        const orderTime = Date.now()
+        const positionOpenKey = RedisKeyMgr.positionOpenTimestampKey(chainToken, baseExchange.exchangeName, quoteExchange.exchangeName)
+        await rdsClient.set(positionOpenKey, orderTime.toString(), 60 * 60 * 24)
+
+        // 将成功下单订单放入list中，用于记录每轮成功下单的订单
         executedOrders.push({
           chainToken,
           baseExchange,

@@ -46,7 +46,7 @@ export class SettlementMgr extends ArbitrageBase {
   * @param chainToken 币种
   * @param baseExchange 基础交易所
   * @param quoteExchange 报价交易所
-  * @returns 持仓时间 最新开仓时间 秒级时间戳
+  * @returns 持仓时间 最新开仓时间 毫秒级时间戳
   */
   private async getPositionOpenedAt(chainToken: string, baseExchange: ExchangeAdapter, quoteExchange: ExchangeAdapter): Promise<number> {
     const redisKey = RedisKeyMgr.positionOpenTimestampKey(chainToken, baseExchange.exchangeName, quoteExchange.exchangeName)
@@ -71,7 +71,7 @@ export class SettlementMgr extends ArbitrageBase {
   }
 
   // 若redis无数据则视为持仓时间过长，返回0；否则返回redis记录的持仓时长
-  private async getHoldDurationSeconds(chainToken: string, baseExchange: ExchangeAdapter, quoteExchange: ExchangeAdapter): Promise<number> {
+  private async getHoldDurationMs(chainToken: string, baseExchange: ExchangeAdapter, quoteExchange: ExchangeAdapter): Promise<number> {
     const now = Date.now()
     const openedAt = await this.getPositionOpenedAt(chainToken, baseExchange, quoteExchange)
     if (openedAt > now) {
@@ -101,8 +101,6 @@ export class SettlementMgr extends ArbitrageBase {
     if (maxBps <= minBps) {
       return minBps
     }
-    const range = maxBps - minBps
-    let startingThreshold = maxBps
     let fundingRatio = 0
     if (fundingDiffBps !== undefined && Number.isFinite(fundingDiffBps)) {
       const side = UtilsMgr.getSideByTotalAPR(fundingDiffBps)
@@ -113,7 +111,7 @@ export class SettlementMgr extends ArbitrageBase {
     const holdRatio = Math.min(holdDurationSeconds / this.maxHoldingSeconds, 1)
     // fundingRatio 权重2，holdRatio 权重1，取平均值
     const ratio = (fundingRatio * 2 + holdRatio) / 3
-    const threshold = minBps + (startingThreshold - minBps) * (1 - ratio)
+    const threshold = minBps + (maxBps - minBps) * ratio
     blogger.info(`${this.traceId} compute spread, holdDurationSeconds: ${holdDurationSeconds}, btSide: ${btSide}, fundingDiffBps: ${fundingDiffBps}, fundingRatio: ${fundingRatio}, holdRatio: ${holdRatio}, ratio: ${ratio}, threshold: ${threshold}`)
     return Math.max(minBps, Math.min(maxBps, threshold))
   }
@@ -177,7 +175,7 @@ export class SettlementMgr extends ArbitrageBase {
       blogger.info(`${this.traceId}, ${trace2}, priceDelta not found, exchange: ${btExchange.exchangeName}`)
       return
     }
-    const holdDurationSeconds = await this.getHoldDurationSeconds(chainToken, btExchange, qtExchange)   // 记录该组合的持仓时长，用于动态阈值
+    const holdDurationSeconds = await this.getHoldDurationMs(chainToken, btExchange, qtExchange)   // 记录该组合的持仓时长，用于动态阈值
     const fundingDiffBps = fundingData ? fundingData.total : undefined
     const requiredDelta = this.computeRequiredSpreadBps(holdDurationSeconds, btSide, fundingDiffBps)
     if (priceDelta < requiredDelta) {

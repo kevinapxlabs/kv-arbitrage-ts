@@ -55,9 +55,9 @@ export interface ExchangeAdapter {
   */
   getQtyFilter(symbol: string): Promise<TQtyFilter | undefined>
   // 下市价单
-  placeMarketOrder(symbol: string, side: EKVSide, quantity: string): Promise<string>
+  placeMarketOrder(symbol: string, side: EKVSide, quantity: string, reduceOnly: boolean): Promise<string>
   // 下限价单
-  placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string): Promise<string>
+  placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string, reduceOnly: boolean): Promise<string>
   // 查询订单
   queryOrder(symbol: string, orderId: string): Promise<TQueryOrder>
   // 取消订单

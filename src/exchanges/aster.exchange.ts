@@ -162,7 +162,7 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
     }
   }
 
-  async placeMarketOrder(symbol: string, side: EKVSide, quantity: string): Promise<string> {
+  async placeMarketOrder(symbol: string, side: EKVSide, quantity: string, reduceOnly: boolean): Promise<string> {
     const keyInfo = this.getKeyInfo()
     const accountApi = new AsterAccountApi({
       apiKey: keyInfo.apiKey,
@@ -175,6 +175,7 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
         type: AsterOrderType.MARKET,
         quantity,
         positionSide: AsterPositionSide.BOTH,
+        reduceOnly,
         newOrderRespType: AsterNewOrderRespType.RESULT
       })
       return String(response.orderId)
@@ -184,7 +185,7 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
     }
   }
 
-  async placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string): Promise<string> {
+  async placeLimitOrder(symbol: string, side: EKVSide, quantity: string, price: string, reduceOnly: boolean): Promise<string> {
     const keyInfo = this.getKeyInfo()
     const accountApi = new AsterAccountApi({
       apiKey: keyInfo.apiKey,
@@ -197,6 +198,7 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
         type: AsterOrderType.LIMIT,
         quantity,
         price,
+        reduceOnly,
         timeInForce: AsterTimeInForce.GTC,
         positionSide: AsterPositionSide.BOTH,
         newOrderRespType: AsterNewOrderRespType.RESULT

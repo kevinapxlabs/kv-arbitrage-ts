@@ -5,13 +5,11 @@ import { sleep } from "../utils/time.util.js"
 
 export class OrderTakerMgr {
   traceId: string
-  timestamp: number
   reason: EOrderReason
 
   constructor(traceId: string, reason: EOrderReason) {
     this.traceId = traceId
     this.reason = reason
-    this.timestamp = Math.floor(Date.now() / 1000)
   }
 
 
@@ -23,7 +21,7 @@ export class OrderTakerMgr {
    */
   async createOrder(exchange: ExchangeAdapter, symbol: string, side: EKVSide, quantity: string, reduceOnly: boolean) {
     blogger.info(`${this.traceId} create order, exchange: ${exchange.exchangeName}, symbol: ${symbol}, side: ${side}, quantity: ${quantity}`)
-    const orderId = await exchange.placeMarketOrder(symbol, side, quantity)
+    const orderId = await exchange.placeMarketOrder(symbol, side, quantity, reduceOnly)
     // [0,500] 间的随机数
     const randomTime = Math.floor(Math.random() * 500)
     await sleep(1000 + randomTime)

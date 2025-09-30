@@ -27,6 +27,7 @@ export class RedisKeyMgr {
     return `APX:${key.toUpperCase()}:ARBITRAGE:CONFIG`
   }
 
+  // 保存交易所交易交易时间 毫秒级时间戳
   static positionOpenTimestampKey(chainToken: string, baseExchange: string, quoteExchange: string) {
     return `KV:POSITION:OPEN:TIMESTAMP:${chainToken}:${baseExchange}:${quoteExchange}`
   }
