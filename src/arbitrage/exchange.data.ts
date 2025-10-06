@@ -45,14 +45,13 @@ export class ExchangeDataMgr {
     if (!orderbook) {
       return
     }
-    const updateTimeSeconds = Number(orderbook.updatetime)
-    if (!Number.isFinite(updateTimeSeconds)) {
+    const updateTimeMs = Number(orderbook.updatetime)
+    if (!Number.isFinite(updateTimeMs)) {
       blogger.warn(`${this.traceId} getOrderBook: ${orderbookKey} has invalid updatetime: ${orderbook.updatetime}`)
       return
     }
-    const updateTime = updateTimeSeconds * 1_000
-    if (currentTime - updateTime > ORDERBOOK_STALE_THRESHOLD_MS) {
-      blogger.warn(`${this.traceId} getOrderBook: ${orderbookKey} is too old, skip, updatetime: ${updateTimeSeconds}, currentTime: ${currentTime}`)
+    if (currentTime - updateTimeMs > ORDERBOOK_STALE_THRESHOLD_MS) {
+      blogger.warn(`${this.traceId} getOrderBook: ${orderbookKey} is too old, skip, updatetime: ${updateTimeMs}, currentTime: ${currentTime}`)
       return
     }
     return orderbook

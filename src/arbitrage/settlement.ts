@@ -31,7 +31,7 @@ export class SettlementMgr extends ArbitrageBase {
   priceDeltaService: PriceDeltaService
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
-    super(`${traceId} profit locked`)
+    super(`${traceId} settlement`)
     this.exchangeIndexMgr = exchangeIndexMgr
     this.arbitrageConfig = arbitrageConfig
     this.exchangeTokenInfoMap = exchangeTokenInfoMap
