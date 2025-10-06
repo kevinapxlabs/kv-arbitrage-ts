@@ -1,5 +1,5 @@
-import { ExchangeAdapter } from "../../exchanges/exchange.adapter"
-import { EExchange, EKVSide } from "../exchange.enum"
+import { ExchangeAdapter } from "../../exchanges/exchange.adapter.js"
+import { EExchange, EKVSide } from "../exchange.enum.js"
 
 // 交易系统订单簿数据结构
 export type TExchangeOrderbook = {
@@ -18,9 +18,7 @@ export type TExchangeFundingFee = {
 export type TExchangeMarkprice = {
   indexPrice: string    // 指数价格
   markPrice: string     // 标记价格
-  rate: string,         // 接下来要收取的资费  0.0001
-  nextFundingTime: number,   // 下轮资费时间戮 ms
-  updatetime: number                 // 行情生成时的时间戮  ms
+  updatetime: number    // 行情生成时的时间戮  ms
 }
 
 // 下单参数
