@@ -1,7 +1,7 @@
 import BigNumber from "bignumber.js"
 import { blogger } from "../common/base/logger.js"
 import { EKVSide, EOrderReason } from "../common/exchange.enum.js"
-import { TOrderParams, TTokenQty } from "../common/types/exchange.type.js"
+import { TCoinData, TOrderParams, TTokenQty } from "../common/types/exchange.type.js"
 import { ExchangeAdapter } from "../exchanges/exchange.adapter.js"
 import { TKVPosition } from "../exchanges/types.js"
 import { TSMap } from "../libs/tsmap.js"
@@ -17,6 +17,7 @@ import { TRiskDataInfo } from "./type.js"
 import { TExchangeTokenInfo, TTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js"
 import { RedisKeyMgr } from "../common/redis.key.js"
 import { rdsClient } from "../common/db/redis.js"
+import { PriceDeltaService } from "../service/pricedelta.service.js"
 
 export class OpportunityMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
@@ -44,6 +45,19 @@ export class OpportunityMgr extends ArbitrageBase {
     this.stableTokenSet = new Set(ParamsMgr.Stable_TOKEN_LIST.map((item) => item.toUpperCase()))
     this.tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
     this.orderTakerMgr = new OrderTakerMgr(this.traceId, EOrderReason.DEFAULT)
+  }
+
+  private composePositionKey(chainToken: string, baseExchange: string, quoteExchange: string): string {
+    return `${chainToken}-${baseExchange}-${quoteExchange}`
+  }
+
+  private buildFundingFeeMap(fundingFeeData: TCoinData[]): Map<string, TCoinData> {
+    const fundingFeeMap = new Map<string, TCoinData>()
+    for (const item of fundingFeeData) {
+      const forwardKey = this.composePositionKey(item.chainToken, item.baseExchange, item.quoteExchange)
+      fundingFeeMap.set(forwardKey, item)
+    }
+    return fundingFeeMap
   }
 
   // 检查是否在禁止或稳定币列表
@@ -145,7 +159,7 @@ export class OpportunityMgr extends ArbitrageBase {
     await sendMsg(ParamsMgr.TG_NOTICE_NAME, content)
   }
 
-  async run(riskData: TRiskDataInfo) {
+  async run(riskData: TRiskDataInfo, currentFundingFeeData: TCoinData[]) {
     if (this.arbitrageConfig.REDUCE_ONLY) {
       blogger.info(`${this.traceId} reduce only enabled, skip opportunity detection`)
       return
@@ -163,11 +177,13 @@ export class OpportunityMgr extends ArbitrageBase {
       return
     }
 
+    const fundingFeeMap = this.buildFundingFeeMap(currentFundingFeeData)  // 便于快速定位两交易所之间的资费差
+
     const exchangeDataMgr = this.getExchangeDataMgr()
     const plannedNewTokens = new Map<number, Set<string>>()
     const executedOrders: TOrderParams[] = []
     const maxTokenNotional = BigNumber(this.arbitrageConfig.MAX_USD_EXCHANGE_AMOUNT_TOKEN)
-    const priceDeltaThreshold = this.arbitrageConfig.PRICE_DELTA_BPS
+    const priceDeltaService = new PriceDeltaService(this.traceId, this.arbitrageConfig)
     for (const chainToken of this.tokenInfoMap.keys()) {
       if (remainingOrders <= 0) {
         break
@@ -224,6 +240,12 @@ export class OpportunityMgr extends ArbitrageBase {
         }
 
         let executeSide: EKVSide | undefined
+        const fundingFeeData = fundingFeeMap.get(this.composePositionKey(chainToken, baseExchange.exchangeName, quoteExchange.exchangeName))
+        if (!fundingFeeData) {
+          blogger.info(`${this.traceId} ${trace2}, funding fee data not found, chainToken: ${chainToken}, baseIndex: ${baseIndex}, quoteIndex: ${quoteIndex}`)
+          continue
+        }
+        const priceDeltaThreshold = priceDeltaService.getIncreasePositionPriceDelta(fundingFeeData.total.toNumber())
         if (priceDelta > priceDeltaThreshold) {
           executeSide = EKVSide.LONG
         } else if (priceDelta < -priceDeltaThreshold) {

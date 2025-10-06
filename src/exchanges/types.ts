@@ -15,6 +15,11 @@ export type TKVPosition = {
   notional: string                 // 按baseToken计算的持仓价值
 }
 
+export type TKVFundingFee = {
+  fundingFee: BigNumber
+  nextFundingTime: number
+}
+
 export type TAsterAccountInfo = {
   initialMarginFraction: number
   marginFraction: number

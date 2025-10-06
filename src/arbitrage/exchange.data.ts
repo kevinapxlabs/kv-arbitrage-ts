@@ -7,6 +7,7 @@ import { RedisKeyMgr } from "../common/redis.key.js";
 import { TExchangeTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js";
 import { ExchangeAdapter } from "../exchanges/exchange.adapter.js";
 import { TSMap } from "../libs/tsmap.js";
+import { TKVFundingFee } from "../exchanges/types.js";
 
 const ORDERBOOK_STALE_THRESHOLD_MS = 5_000 // 5秒
 
@@ -118,7 +119,7 @@ export class ExchangeDataMgr {
   * @param symbol 交易对 如 BTCUSDT
   * @returns funding fee
   */
-  static async getFundingFee(exchange: EExchange, symbol: string): Promise<BigNumber | undefined> {
+  static async getFundingFee(exchange: EExchange, symbol: string): Promise<TKVFundingFee | undefined> {
     const tickerKey = RedisKeyMgr.FundingRateKey(exchange, symbol)
     const tickerStr = await rdsClient.get(tickerKey)
     if (!tickerStr) {
@@ -135,7 +136,7 @@ export class ExchangeDataMgr {
         blogger.warn(`getFundingFee: invalid rate: ${ticker.rate}, key: ${tickerKey}`)
         return
       }
-      return fundingFee
+      return { fundingFee: fundingFee, nextFundingTime: ticker.nextFundingTime }
     } catch (error) {
       blogger.error(`getFundingFee: failed to parse rate, key: ${tickerKey}`, error)
     }

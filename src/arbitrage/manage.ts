@@ -109,7 +109,7 @@ export class ArbitrageManage extends ArbitrageBase {
 
       // 9. 获取机会
       const opportunityMgr = new OpportunityMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, tokenInfoMap, exchangeTokenInfoMap)
-      await opportunityMgr.run(riskData)
+      await opportunityMgr.run(riskData, currentFundingFeeData)
 
       // 10. 利润锁定
       const profitLockedMgr = new SettlementMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, exchangeTokenInfoMap)

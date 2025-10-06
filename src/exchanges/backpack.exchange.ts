@@ -2,7 +2,7 @@ import { blogger } from '../common/base/logger.js'
 import { EExchange, EExchangeCexId, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import type { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
 import type { ExchangeAdapter } from './exchange.adapter.js'
-import type { TAccountInfo, TBackpackAccountInfo, TBNKey, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
+import type { TAccountInfo, TBackpackAccountInfo, TBNKey, TCancelOrder, TKVFundingFee, TKVPosition, TQueryOrder } from './types.js'
 import { BackpackMarketInfoMgr } from '../manager/marketinfo/backpack.marketinfo.js'
 import { TArbitrageConfig } from '../arbitrage/arbitrage.config.js'
 import { defiConfig } from '../config/config.js'
@@ -234,9 +234,9 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     }
   }
 
-  async getCurrentFundingFee(symbol: string): Promise<BigNumber> {
+  async getCurrentFundingFee(symbol: string): Promise<TKVFundingFee> {
     const fundingFee = await ExchangeDataMgr.getFundingFee(EExchange.Backpack, symbol)
-    return fundingFee ? BigNumber(fundingFee) : BigNumber(0)
+    return fundingFee ? { fundingFee: BigNumber(fundingFee.fundingFee), nextFundingTime: fundingFee.nextFundingTime } : { fundingFee: BigNumber(0), nextFundingTime: 0 }
   }
 
   async getSymbolInterval(symbol: string): Promise<number> {

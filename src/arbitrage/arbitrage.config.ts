@@ -18,22 +18,29 @@ export interface TArbitrageConfig {
 
   SHARES: number                      // 投资人总投资额
 
-  // increase position
-  PRICE_DELTA_BPS: number               // 两交易所币对价差 bps
-  MAX_POSITION_COUNTER: number          // 每轮执行最大开仓位数量
-  MAX_POSITION_TOKEN_COUNTER: number    // 交易所最大持仓token种类
-  MAX_USD_EXCHANGE_AMOUNT_TOKEN: number // 每个币种持仓最大金额
+  // position
+  MAX_POSITION_COUNTER: number            // 每轮执行最大开仓位数量
+  MAX_POSITION_TOKEN_COUNTER: number      // 交易所最大持仓token种类
+  MAX_USD_EXCHANGE_AMOUNT_TOKEN: number   // 每个币种持仓最大金额
   TOKEN_BANNED_LIST: string[]             // 直接指定减仓的token
 
-  REBALANCE_MAX_USD_AMOUNT: number      // 重新平衡最大金额, 按 USD 计算
+  REBALANCE_MAX_USD_AMOUNT: number        // 重新平衡最大金额, 按 USD 计算
+
+  // increase position
+  INCREASE_PRICE_DELTA_BPS: number               // 两交易所币对价差 bps
+  INCREASE_FUNDING_FEE_TOLERATE_BPS: number     // 资费差容忍度 bps
 
   // decrease position
-  DECREASE_PRICE_DELTA_BPS: number        // 价差达到阈值时才会执行因风控而减仓 bps
-  MAX_REDUCE_POSITION_COUNTER: number     // 每轮执行最大减仓仓位数量
-  REDUCE_ONLY: boolean                    // 是否只减仓不加仓, 默认是false, 当撤仓时执行
+  DECREASE_PRICE_DELTA_BPS: number              // 价差达到阈值时才会执行因风控而减仓 bps
+  MAX_REDUCE_POSITION_COUNTER: number           // 每轮执行最大减仓仓位数量
+  REDUCE_ONLY: boolean                           // 是否只减仓不加仓, 默认是false, 当撤仓时执行
 
-  SETTLEMENT_PRICE_VAR_BPS_MIN: number          // 结算价格差价最小值
-  SETTLEMENT_PRICE_VAR_BPS_MAX: number          // 结算价格差价最大值
+  SETTLEMENT_PRICE_DELTA_BPS_MIN: number          // 结算价格差价最小值
+  SETTLEMENT_PRICE_DELTA_BPS_MAX: number          // 结算价格差价最大值
+  SETTLEMENT_PRICE_DELTA_TOLERATE_BPS: number   // 结算价格差价容忍度 bps
+  SETTLEMENT_HOLD_MAX_HOURS: number             // 持仓时长最大值 hold max hours
+  SETTLEMENT_FUNDING_FEE_MAX_BAD_BPS: number    // 资费不利资费阈值 BPS
+  SETTLEMENT_FUNDING_FEE_EXTREME_BAD_BPS: number   // 资费极端不利资费阈值 BPS
 }
 
 // 由于 TypeScript 的类型信息在运行时不可用，无法直接通过空对象获取类型的键
@@ -47,17 +54,22 @@ const requiredKeys: (keyof TArbitrageConfig)[] = [
   'ASTER_MARGIN_RATIO_2',
   'ASTER_MARGIN_RATIO_3',
   'SHARES',
-  'PRICE_DELTA_BPS',
   'MAX_POSITION_COUNTER',
   'MAX_POSITION_TOKEN_COUNTER',
   'MAX_USD_EXCHANGE_AMOUNT_TOKEN',
   'REBALANCE_MAX_USD_AMOUNT',
+  'INCREASE_PRICE_DELTA_BPS',
+  'INCREASE_FUNDING_FEE_TOLERATE_BPS',
   'DECREASE_PRICE_DELTA_BPS',
   'MAX_REDUCE_POSITION_COUNTER',
   'REDUCE_ONLY',
   'TOKEN_BANNED_LIST',
-  'SETTLEMENT_PRICE_VAR_BPS_MIN',
-  'SETTLEMENT_PRICE_VAR_BPS_MAX'
+  'SETTLEMENT_PRICE_DELTA_BPS_MIN',
+  'SETTLEMENT_PRICE_DELTA_BPS_MAX',
+  'SETTLEMENT_PRICE_DELTA_TOLERATE_BPS',
+  'SETTLEMENT_HOLD_MAX_HOURS',
+  'SETTLEMENT_FUNDING_FEE_MAX_BAD_BPS',
+  'SETTLEMENT_FUNDING_FEE_EXTREME_BAD_BPS'
 ]
 
 const typeConverters: Record<string, (value: string) => any> = {
@@ -113,11 +125,11 @@ export class ArbitrageConfig {
   // 获取配置
   static async getConfig(): Promise<TArbitrageConfig> {
     const projectName = defiConfig.projectName
-    const cacheKey = RedisKeyMgr.arbitrageConfigKey(projectName)
-    const cacheConfig = await rdsClient.get(cacheKey)
-    if (cacheConfig) {
-      return JSON.parse(cacheConfig) as TArbitrageConfig
-    }
+    // const cacheKey = RedisKeyMgr.arbitrageConfigKey(projectName)
+    // const cacheConfig = await rdsClient.get(cacheKey)
+    // if (cacheConfig) {
+    //   return JSON.parse(cacheConfig) as TArbitrageConfig
+    // }
     const configRep = new ArbitrageConfigRep(pool)
     const configs = await configRep.queryByProjectName(projectName)
     // console.log(configs)
@@ -132,7 +144,7 @@ export class ArbitrageConfig {
         throw new Error(`Property ${key} is missing or not assigned in ${projectName}`);
       }
     }
-    await rdsClient.set(cacheKey, JSON.stringify(config), 4 * 60 * 60)
+    // await rdsClient.set(cacheKey, JSON.stringify(config), 4 * 60 * 60)
     return config
   }
 }

@@ -52,6 +52,7 @@ export type TCoinData = {
   quoteExchangeIndex: number    // 交易所索引，如0, 1, 2
   quoteExchangeRate: BigNumber   // 交易所资费
   quoteExchangeToken: string     // 交易所币种信息，如KPEPE
+  nextFundingTime: number        // 下一轮资费时间戮 ms, 如1717171717171
   total: BigNumber               // 资费差值
 }
 

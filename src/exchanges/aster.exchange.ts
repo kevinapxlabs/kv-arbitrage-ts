@@ -2,7 +2,7 @@ import { blogger } from '../common/base/logger.js'
 import { EExchange, EExchangeCexId, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import type { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
 import type { ExchangeAdapter } from './exchange.adapter.js'
-import type { TAccountInfo, TAsterAccountInfo, TBNKey, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
+import type { TAccountInfo, TAsterAccountInfo, TBNKey, TCancelOrder, TKVFundingFee, TKVPosition, TQueryOrder } from './types.js'
 import {
   AsterAccountApi,
   AsterNewOrderRespType,
@@ -245,9 +245,9 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
     }
   }
 
-  async getCurrentFundingFee(symbol: string): Promise<BigNumber> {
+  async getCurrentFundingFee(symbol: string): Promise<TKVFundingFee> {
     const fundingFee = await ExchangeDataMgr.getFundingFee(EExchange.Aster, symbol)
-    return fundingFee ? BigNumber(fundingFee) : BigNumber(0)
+    return fundingFee ? { fundingFee: BigNumber(fundingFee.fundingFee), nextFundingTime: fundingFee.nextFundingTime } : { fundingFee: BigNumber(0), nextFundingTime: 0 }
   }
 
   async getSymbolInterval(symbol: string): Promise<number> {

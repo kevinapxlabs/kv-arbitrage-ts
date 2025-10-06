@@ -4,7 +4,7 @@ import { IArbitrageConfigDBRes, TArbitrageConfigDB } from './arbitrage.config.ty
 export class ArbitrageConfigRep {
   pool: Pool
   reqKeys: string[]
-  tableName = 'ARBITRAGE_CONFIG'
+  tableName = 'CROSS_FUNDING_FEE_CONFIG'
 
   constructor(pool: Pool) {
     this.pool = pool

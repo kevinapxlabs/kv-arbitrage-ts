@@ -2,7 +2,7 @@ import { TRiskDataInfo } from '../arbitrage/type.js'
 import { EExchange, EExchangeCexId, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import { EPositionDescrease } from '../common/types/exchange.type.js'
 import { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
-import { TAccountInfo, TCancelOrder, TKVPosition, TQueryOrder } from './types.js'
+import { TAccountInfo, TCancelOrder, TKVFundingFee, TKVPosition, TQueryOrder } from './types.js'
 
 export interface ExchangeAccountLimits {
   minQuantity?: number
@@ -66,7 +66,7 @@ export interface ExchangeAdapter {
     @param symbol: 交易所符号 如 BTCUSDT
     @returns 当前资费数据
   */
-  getCurrentFundingFee(symbol: string): Promise<BigNumber>
+  getCurrentFundingFee(symbol: string): Promise<TKVFundingFee>
 
    /*
     @param symbol: 交易所符号 如 BTCUSDT

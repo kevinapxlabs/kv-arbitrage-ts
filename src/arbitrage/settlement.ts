@@ -18,6 +18,7 @@ import { TArbitrageConfig } from "./arbitrage.config.js"
 import { TExchangeTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js"
 import { RedisKeyMgr } from "../common/redis.key.js"
 import { TSMap } from "../libs/tsmap.js"
+import { PriceDeltaService } from "../service/pricedelta.service.js"
 
 export class SettlementMgr extends ArbitrageBase {
   arbitrageConfig: TArbitrageConfig
@@ -25,8 +26,9 @@ export class SettlementMgr extends ArbitrageBase {
   exchangeIndexMgr: ExchangeIndexMgr
   exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>
   orderTakerMgr: OrderTakerMgr
-  private readonly maxHoldingSeconds = 24 * 60 * 60
   private readonly tokenQtyMgr: TokenQtyMgr
+
+  priceDeltaService: PriceDeltaService
 
   constructor(traceId: string, exchangeIndexMgr: ExchangeIndexMgr, arbitrageConfig: TArbitrageConfig, exchangeTokenInfoMap: TSMap<string, TExchangeTokenInfo>) {
     super(`${traceId} profit locked`)
@@ -35,6 +37,7 @@ export class SettlementMgr extends ArbitrageBase {
     this.exchangeTokenInfoMap = exchangeTokenInfoMap
     this.orderTakerMgr = new OrderTakerMgr(this.traceId, EOrderReason.PROFIT_LOCKED)
     this.tokenQtyMgr = new TokenQtyMgr(this.traceId, this.exchangeIndexMgr)
+    this.priceDeltaService = new PriceDeltaService(traceId, this.arbitrageConfig)
   }
 
   private composePositionKey(chainToken: string, baseExchange: string, quoteExchange: string): string {
@@ -87,33 +90,6 @@ export class SettlementMgr extends ArbitrageBase {
       fundingFeeMap.set(forwardKey, item)
     }
     return fundingFeeMap
-  }
-
-  /* 根据持仓时长和资费差动态计算当前需要满足的利差阈值
-  * @param holdDurationSeconds 持仓时长
-  * @param btSide 基础交易所持仓方向
-  * @param fundingDiffBps 资费差 按年化计算的资费差 bps
-  * @returns 需要满足的利差阈值
-  */
-  private computeRequiredSpreadBps(holdDurationSeconds: number, btSide: EKVSide, fundingDiffBps: BigNumber | undefined): number {
-    const minBps = this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MIN
-    const maxBps = this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MAX
-    if (maxBps <= minBps) {
-      return minBps
-    }
-    let fundingRatio = 0
-    if (fundingDiffBps !== undefined && Number.isFinite(fundingDiffBps)) {
-      const side = UtilsMgr.getSideByTotalAPR(fundingDiffBps)
-      if (btSide !== side) {
-        fundingRatio = Math.min(fundingDiffBps.abs().toNumber() / ParamsMgr.MAX_FUNDING_RATIO, 1)
-      }
-    }
-    const holdRatio = Math.min(holdDurationSeconds / this.maxHoldingSeconds, 1)
-    // fundingRatio 权重2，holdRatio 权重1，取平均值
-    const ratio = (fundingRatio * 2 + holdRatio) / 3
-    const threshold = minBps + (maxBps - minBps) * ratio
-    blogger.info(`${this.traceId} compute spread, holdDurationSeconds: ${holdDurationSeconds}, btSide: ${btSide}, fundingDiffBps: ${fundingDiffBps}, fundingRatio: ${fundingRatio}, holdRatio: ${holdRatio}, ratio: ${ratio}, threshold: ${threshold}`)
-    return Math.max(minBps, Math.min(maxBps, threshold))
   }
 
   // 检查是否达到 profit 最小要求
@@ -175,9 +151,10 @@ export class SettlementMgr extends ArbitrageBase {
       blogger.info(`${this.traceId}, ${trace2}, priceDelta not found, exchange: ${btExchange.exchangeName}`)
       return
     }
-    const holdDurationSeconds = await this.getHoldDurationMs(chainToken, btExchange, qtExchange)   // 记录该组合的持仓时长，用于动态阈值
+    const holdDurationMs = await this.getHoldDurationMs(chainToken, btExchange, qtExchange)   // 记录该组合的持仓时长，用于动态阈值
+    const holdHours = Math.floor(holdDurationMs / (1000 * 60 * 60))
     const fundingDiffBps = fundingData ? fundingData.total : undefined
-    const requiredDelta = this.computeRequiredSpreadBps(holdDurationSeconds, btSide, fundingDiffBps)
+    const requiredDelta = this.priceDeltaService.getDecreasePositionPriceDelta(fundingDiffBps?.toNumber() ?? 0, holdHours, fundingData?.nextFundingTime ?? 0)
     if (priceDelta < requiredDelta) {
       blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} below required ${requiredDelta}, fundingDiffBps: ${fundingDiffBps}`)
       return
@@ -186,9 +163,6 @@ export class SettlementMgr extends ArbitrageBase {
     if (!price) {
       blogger.info(`${this.traceId} ${trace2}, price not found, exchange: ${btExchange.exchangeName}`)
       return
-    }
-    if (holdDurationSeconds >= this.maxHoldingSeconds) {
-      blogger.warn(`${this.traceId} ${trace2}, holding time ${holdDurationSeconds}s exceeded limit, using min delta ${this.arbitrageConfig.SETTLEMENT_PRICE_VAR_BPS_MIN}`)
     }
     blogger.info(`${this.traceId} ${trace2}, price delta ok, symbol: ${btSymbol}, price delta: ${priceDelta}, required delta: ${requiredDelta}, fundingDiffBps: ${fundingDiffBps}, btPosition: ${JSON.stringify(btPosition)}, qtPosition: ${JSON.stringify(qtPosition)}`)
     const quantity = ParamsMgr.USD_AMOUNT_EVERY_ORDER.dividedBy(price)

@@ -5,6 +5,7 @@ import { blogger } from '../common/base/logger.js'
 import { TTokenInfo } from '../service/tokenInfo.service.js'
 import { TCoinData } from '../common/types/exchange.type.js'
 import { ExchangeAdapter } from '../exchanges/exchange.adapter.js'
+import { TKVFundingFee } from '../exchanges/types.js'
 
 export class FundingFeeMgr {
   traceId: string
@@ -62,7 +63,7 @@ export class FundingFeeMgr {
     // 3. 获取当前资费数据
     const currentFundingFeeList: TCoinData[] = []
     // TSMap<baseToken, Array<交易所平均历史资费>>
-    const currentFundingFeeMap = new TSMap<string, Array<BigNumber | null>>()
+    const currentFundingFeeMap = new TSMap<string, Array<TKVFundingFee | null>>()
     for (const chainToken of this.tokenInfoMap.keys()) {
       const exchangeInfo = this.tokenInfoMap.get(chainToken)
       if (!exchangeInfo) {
@@ -81,7 +82,8 @@ export class FundingFeeMgr {
           const symbol = exchange.generateOrderbookSymbol(exchangeTokenInfo.exchangeToken)
           try {
             const currentFundingFee = await exchange.getCurrentFundingFee(symbol)
-            return await this.getHistoryFundingFeeAverage(exchange, symbol, [currentFundingFee])
+            const fundingFeeAverage = await this.getHistoryFundingFeeAverage(exchange, symbol, [currentFundingFee.fundingFee])
+            return { fundingFee: fundingFeeAverage, nextFundingTime: currentFundingFee.nextFundingTime }
           } catch (error) {
             blogger.error(`${this.traceId} failed to get current funding fee, cexId: ${exchange.cexId}, chainToken: ${chainToken}, symbol: ${symbol}, error: ${error instanceof Error ? error.message : error}`)
             return null
@@ -126,17 +128,20 @@ export class FundingFeeMgr {
           blogger.warn(`${this.traceId} hff[baseExchangeIndex] or hff[quoteExchangeIndex] is null, baseExchangeIndex: ${baseExchangeIndex}, quoteExchangeIndex: ${quoteExchangeIndex}, chainToken: ${tokenKey}`)
           continue
         }
-        const total = baseRate.minus(quoteRate).multipliedBy(100)
+        const total = baseRate.fundingFee.minus(quoteRate.fundingFee).multipliedBy(100)
+        // 取两个交易所中最早的下一轮资费时间
+        const nextFundingTime = baseRate.nextFundingTime > quoteRate.nextFundingTime ? quoteRate.nextFundingTime : baseRate.nextFundingTime
         currentFundingFeeList.push({
           chainToken: tokenKey,
           baseExchange: baseExchange.exchangeName,
           baseExchangeIndex: baseExchangeIndex,
-          baseExchangeRate: baseRate,
+          baseExchangeRate: baseRate.fundingFee,
           baseExchangeToken: baseExchangeTokenInfo.exchangeToken,
           quoteExchange: quoteExchange.exchangeName,
           quoteExchangeIndex: quoteExchangeIndex,
-          quoteExchangeRate: quoteRate,
+          quoteExchangeRate: quoteRate.fundingFee,
           quoteExchangeToken: quoteExchangeTokenInfo.exchangeToken,
+          nextFundingTime: nextFundingTime,
           total: total
         })
       }

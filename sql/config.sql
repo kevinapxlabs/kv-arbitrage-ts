@@ -1,5 +1,5 @@
 -- cross config
-CREATE TABLE `ARBITRAGE_CONFIG` (
+CREATE TABLE `CROSS_FUNDING_FEE_CONFIG` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `projectName` varchar(255) NOT NULL,
   `proKey` varchar(255) NOT NULL,
