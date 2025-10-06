@@ -6,7 +6,7 @@ import { TokenInfoService } from "../service/tokenInfo.service.js";
 import { ExchangeIndexMgr } from "./exchange.index.js";
 import { LeverageMgr } from "./leverage.js";
 import { RebalanceMgr } from "./rebalance.js";
-import { TRiskDataInfo } from "./type.js";
+import { TRiskDataInfo, TTokenPosition } from "./type.js";
 import { ExchangeAdapter } from "../exchanges/exchange.adapter.js";
 import { EPositionDescrease, TCoinData } from "../common/types/exchange.type.js";
 import { OpportunityMgr } from "./opportunity.js";
@@ -16,6 +16,7 @@ import { NoticeMgr } from "./notice.js";
 import { FundingFeeMgr } from "./fundingFee.data.js";
 import { TSMap } from "../libs/tsmap.js";
 import { DecreaseMgr } from "./decrease.js";
+import { RiskDataMock } from "../mock/riskdata.mock.js";
 
 /*
 * 管理funding fee 的所有逻辑，包括减仓、加仓、杠杆调整、rebalance、利润锁定、总结
@@ -58,6 +59,27 @@ export class ArbitrageManage extends ArbitrageBase {
     }
   }
 
+  // 打印position信息
+  positionToLog(chainTokenPositionMap: TSMap<string, TTokenPosition>) {
+    const logs: string[] = []
+    for (const chainToken of chainTokenPositionMap.keys()) {
+      const postiionList = chainTokenPositionMap.get(chainToken)
+      if (postiionList) {
+        const p = postiionList.positions
+        const plogs: string[] = []
+        for (const p of postiionList.positions) {
+          if (p) {
+            plogs.push(p.positionAmt)
+          } else {
+            plogs.push('null')
+          }
+        }
+        logs.push(`${chainToken}: ${plogs.join('|')}`)
+      }
+    }
+    blogger.info(`${this.traceId} positions token symbols: ${logs.join(',')}`)
+  }
+
   async _run() {
     try {
       // 1. 获取资费配置
@@ -73,6 +95,9 @@ export class ArbitrageManage extends ArbitrageBase {
       // 3. 获取交易所风控数据
       const riskMgr = new RiskDataMgr(this.traceId, exchangeIndexMgr, exchangeTokenInfoMap)
       const riskData = await riskMgr.getRiskData()
+      // const riskData = RiskDataMock.getRiskData()
+      blogger.info(`${this.traceId} riskData: ${JSON.stringify(riskData.accountInfo)}`)
+      this.positionToLog(riskData.chainTokenPositionMap)
       blogger.info(`${this.traceId} exchangeRiskInfo: ${JSON.stringify(riskData.exchangeRiskInfo.toJSON())}`)
 
       // 4. 调整杠杆

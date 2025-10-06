@@ -65,7 +65,7 @@ export class ExchangeDataMgr {
   * @returns index price
   */
   async getIndexPrice(exchange: EExchange, symbol: string): Promise<BigNumber | undefined> {
-    const tickerKey = RedisKeyMgr.MarketKey(exchange, symbol)
+    const tickerKey = RedisKeyMgr.MarketPriceKey(exchange, symbol)
     const tickerStr = await rdsClient.get(tickerKey)
     if (!tickerStr) {
       blogger.error(`${this.traceId} getIndexPrice, key: ${tickerKey} not found`)

@@ -1,3 +1,4 @@
+import BigNumber from 'bignumber.js'
 import { blogger } from '../common/base/logger.js'
 import { EExchange, EExchangeCexId, EExchangeId, EKVSide } from '../common/exchange.enum.js'
 import type { TQtyFilter } from '../manager/marketinfo/maretinfo.type.js'
@@ -149,6 +150,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
       }
       return rule
     } catch (error) {
+      console.debug(error);
       blogger.error('backpack load markets failed', error)
       return undefined
     }

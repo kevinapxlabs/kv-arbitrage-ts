@@ -27,6 +27,7 @@ export class PriceDeltaService {
     const increaseFundingFeeTolerateBps = this.arbitrageConfig.INCREASE_FUNDING_FEE_TOLERATE_BPS
     const increasePriceDeltaBps = this.arbitrageConfig.INCREASE_PRICE_DELTA_BPS
     if (fundingFeeBps < increaseFundingFeeTolerateBps) {
+      blogger.info(`${this.traceId} get increase position price delta, fundingFeeBps: ${fundingFeeBps}, increaseFundingFeeTolerateBps: ${increaseFundingFeeTolerateBps}, increasePriceDeltaBps: ${increasePriceDeltaBps}`)
       return increasePriceDeltaBps * 5
     } else if (fundingFeeBps > 0) {
       return increasePriceDeltaBps

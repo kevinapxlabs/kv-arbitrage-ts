@@ -1,4 +1,4 @@
-import { AsterApiBase, AsterClientConfig } from './aster.client';
+import { AsterApiBase, AsterClientConfig } from './aster.client.js';
 import {
   AsterAccountBalanceEntry,
   AsterAccountInfoResponse,

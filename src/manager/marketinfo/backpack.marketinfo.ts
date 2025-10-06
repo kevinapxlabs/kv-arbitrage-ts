@@ -91,7 +91,12 @@ export class BackpackMarketInfoMgr {
         apiSecret: ''
       });
       const info = await marketApi.markets.getMarkets();
-      await rdsClient.set(marketInfoKey, JSON.stringify(info), DEFAULT_REDIS_TTL_SECONDS);
+      if (info.statusCode !== 200) {
+        const msg = `backpack market info fetch failed, statusCode: ${info.statusCode}, message: ${info.error}`
+        blogger.error(msg);
+        throw new Error(msg);
+      }
+      await rdsClient.set(marketInfoKey, JSON.stringify(info.data), DEFAULT_REDIS_TTL_SECONDS);
       return info.data as BackpackMarketInfo;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

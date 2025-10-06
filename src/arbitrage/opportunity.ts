@@ -246,6 +246,7 @@ export class OpportunityMgr extends ArbitrageBase {
           continue
         }
         const priceDeltaThreshold = priceDeltaService.getIncreasePositionPriceDelta(fundingFeeData.total.toNumber())
+        blogger.info(`${this.traceId} ${trace2}, priceDelta: ${priceDelta}, priceDeltaThreshold: ${priceDeltaThreshold}`)
         if (priceDelta > priceDeltaThreshold) {
           executeSide = EKVSide.LONG
         } else if (priceDelta < -priceDeltaThreshold) {

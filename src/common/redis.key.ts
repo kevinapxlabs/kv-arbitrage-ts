@@ -6,7 +6,7 @@ export class RedisKeyMgr {
     return `KV:${exchange}:FUTUREU:ORDERBOOK:${symbol.toUpperCase()}`;
   }
 
-  static MarketKey(exchange: EExchange, symbol: string) {
+  static MarketPriceKey(exchange: EExchange, symbol: string) {
     return `KV:${exchange}:MARKETPRICE:${symbol.toUpperCase()}`;
   }
 
@@ -20,7 +20,7 @@ export class RedisKeyMgr {
 
   // 保存交易所交易交易规则和交易对
   static MarketInfoKey(exchange: EExchange) {
-    return `KV:${exchange}:MARKETINFO}`;
+    return `KV:${exchange}:MARKETINFO`;
   }
 
   static arbitrageConfigKey(key: string) {
