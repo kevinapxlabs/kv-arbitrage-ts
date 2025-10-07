@@ -72,12 +72,14 @@ export class SummaryMgr {
     // aster
     const asterAccountInfo = accountInfo.asterAccountInfo
     if (asterAccountInfo) {
-      const bitgetInfo = exchangeRiskInfo.get(EExchange.Aster)
-      let bitgetNotional = ''
-      if (bitgetInfo) {
-        const bitgetLeverage = BigNumber(bitgetInfo.totalNotional).dividedBy(asterAccountInfo.equity).toFixed(1)
-        bitgetNotional = `$${BigNumber(asterAccountInfo.equity).toFixed(1)}($${bitgetInfo.totalNotional})(${bitgetLeverage})`
-        texts.push(`【asterNotional】: ${bitgetNotional}`)
+      const asterInfo = exchangeRiskInfo.get(EExchange.Aster)
+      let asterNotional = ''
+      if (asterInfo) {
+        texts.push(`【asterIMF】: ${asterAccountInfo.initialMarginFraction}`)
+        texts.push(`【asterMMF】: ${asterAccountInfo.marginFraction}`)
+        const asterLeverage = BigNumber(asterInfo.totalNotional).dividedBy(asterAccountInfo.equity).toFixed(1)
+        asterNotional = `$${BigNumber(asterAccountInfo.equity).toFixed(1)}($${asterInfo.totalNotional})(${asterLeverage})`
+        texts.push(`【asterNotional】: ${asterNotional}`)
       }
     }
     // backpack
@@ -86,9 +88,12 @@ export class SummaryMgr {
       const backpackInfo = exchangeRiskInfo.get(EExchange.Backpack)
       let backpackNotional = ''
       if (backpackInfo) {
+        texts.push(`【bpIMF】: ${bpAccountInfo.imf}`)
+        texts.push(`【bpMMF】: ${bpAccountInfo.mmf}`)
+        texts.push(`【bpMarginFraction】: ${bpAccountInfo.marginFraction}`)
         const backpackLeverage = BigNumber(backpackInfo.totalNotional).dividedBy(bpAccountInfo.equity).toFixed(1)
         backpackNotional = `$${BigNumber(bpAccountInfo.equity).toFixed(1)}($${backpackInfo.totalNotional})(${backpackLeverage})`
-        texts.push(`【backpackNotional】: ${backpackNotional}`)
+        texts.push(`【bpNotional】: ${backpackNotional}`)
       }
     }
     // 获取nav

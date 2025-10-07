@@ -157,7 +157,7 @@ export class SettlementMgr extends ArbitrageBase {
     const fundingDiffBps = fundingData ? fundingData.total : undefined
     const requiredDelta = this.priceDeltaService.getDecreasePositionPriceDelta(fundingDiffBps?.toNumber() ?? 0, holdHours, fundingData?.nextFundingTime ?? 0)
     if (priceDelta < requiredDelta) {
-      blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} below required ${requiredDelta}, fundingDiffBps: ${fundingDiffBps}`)
+      blogger.info(`${this.traceId} ${trace2}, symbol: ${btSymbol}, price delta: ${priceDelta} below required ${requiredDelta}, fundingFeeTotal: ${fundingDiffBps}`)
       return
     }
     const price = await exchangeDataMgr.getIndexPrice2([btExchange, qtExchange], chainToken, this.exchangeTokenInfoMap)
