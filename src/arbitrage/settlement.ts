@@ -56,6 +56,7 @@ export class SettlementMgr extends ArbitrageBase {
     try {
       const value = await rdsClient.get(redisKey)
       if (!value) {
+        blogger.warn(`${this.traceId} position open timestamp not found, redisKey: ${redisKey}`)
         return 0
       }
       let openedAt = Number(value)

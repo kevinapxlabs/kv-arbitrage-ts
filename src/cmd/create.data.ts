@@ -41,7 +41,7 @@ export class CrossCreateData {
     await this.setMarketPriceData(EExchange.Aster, 'LINKUSDT', '101', '0.003')
     await this.setMarketPriceData(EExchange.Backpack, 'LINK_USDC_PERP', '102', '0.0008')
     await this.setFundingRateData(EExchange.Aster, 'LINKUSDT', '0.0008')
-    await this.setFundingRateData(EExchange.Backpack, 'LINK_USDC_PERP', '0.0108')
+    await this.setFundingRateData(EExchange.Backpack, 'LINK_USDC_PERP', '0.00009')
     await this.setOrderbook(EExchange.Aster, 'LINKUSDT', ['109', '100000000'], ["103", "100000000"])
     await this.setOrderbook(EExchange.Backpack, 'LINK_USDC_PERP', ['101', '100000000'], ["100", "100000000"])
   }

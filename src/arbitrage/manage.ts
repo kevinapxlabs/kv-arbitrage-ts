@@ -42,7 +42,7 @@ export class ArbitrageManage extends ArbitrageBase {
   }
 
   getFundingfeeLog(coinData: TCoinData[], msg: string) {
-    const minTotal = 12
+    const minTotal = 6
     const logs = new TSMap<string, string>()
     for (const coin of coinData) {
       if (coin.total.abs().gt(minTotal)) {
@@ -136,9 +136,9 @@ export class ArbitrageManage extends ArbitrageBase {
       const opportunityMgr = new OpportunityMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, tokenInfoMap, exchangeTokenInfoMap)
       await opportunityMgr.run(riskData, currentFundingFeeData)
 
-      // 10. 利润锁定
-      const profitLockedMgr = new SettlementMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, exchangeTokenInfoMap)
-      await profitLockedMgr.run(riskData, currentFundingFeeData)
+      // 10. 结算利润
+      const settlementMgr = new SettlementMgr(this.traceId, exchangeIndexMgr, arbitrageConfig, exchangeTokenInfoMap)
+      await settlementMgr.run(riskData, currentFundingFeeData)
 
       // 11. 生成总结
       const summaryMgr = new SummaryMgr(this.traceId, arbitrageConfig)

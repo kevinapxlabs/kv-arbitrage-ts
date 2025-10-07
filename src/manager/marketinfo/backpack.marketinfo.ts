@@ -192,7 +192,7 @@ export class BackpackMarketInfoMgr {
       return undefined;
     }
     if (interval >= 60) {
-      return interval / 3600;
+      return interval / 3600 / 1000;
     }
     return interval;
   }
