@@ -5,8 +5,7 @@ import { TRiskDataInfo } from "./type.js";
 import { blogger } from "../common/base/logger.js";
 import { TExchangeTokenInfo, TokenInfoService } from "../service/tokenInfo.service.js";
 import { TSMap } from "../libs/tsmap.js";
-
-const DEFAULT_LEVERAGE = 5
+import { DEFAULT_LEVERAGE } from "./arbitrage.constant.js";
 
 /**
  * 调整各交易所币对杠杆

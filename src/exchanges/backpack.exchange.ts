@@ -13,6 +13,7 @@ import { TRiskDataInfo } from '../arbitrage/type.js'
 import { ExchangeDataMgr } from '../arbitrage/exchange.data.js'
 import { BpxApiClient, FuturePositionWithMargin, OrderStatus, OrderType, Side, TimeInForce } from '../libs/bpxClient/index.js'
 import { IncreasePositionDiscount } from './constant.js'
+import { DEFAULT_LEVERAGE } from '../arbitrage/arbitrage.constant.js'
 
 const COMPLETED_ORDER_STATUSES = new Set<OrderStatus>([
   OrderStatus.Cancelled,
@@ -32,6 +33,8 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   readonly cexId = EExchangeCexId.BackPack
   readonly exchangeName = EExchange.Backpack
   readonly settlementAsset = 'USDC'
+
+  readonly SUCCESS_STATUS_CODE = 200
 
   readonly arbitrageConfig: TArbitrageConfig
 
@@ -130,6 +133,9 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     })
     try {
       const positions = await tradingApi.futures.getOpenPositions()
+      if (positions.statusCode !== this.SUCCESS_STATUS_CODE) {
+        throw new Error(`bp getPositions failed, statusCode: ${positions.statusCode}, message: ${positions.error}`)
+      }
       return positions.data
         .filter((position) => Number(position.netQuantity) !== 0)
         .map((position) => this.toKVPosition(position))
@@ -144,11 +150,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   async getQtyFilter(symbol: string): Promise<TQtyFilter | undefined> {
     const normalized = this.normalizeSymbol(symbol)
     try {
-      const rule = await BackpackMarketInfoMgr.getFutureSymbolRule(normalized)
-      if (!rule) {
-        return undefined
-      }
-      return rule
+      return await BackpackMarketInfoMgr.getFutureSymbolRule(normalized)
     } catch (error) {
       console.debug(error);
       blogger.error('backpack load markets failed', error)
@@ -171,6 +173,9 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
         reduceOnly,
         timeInForce: TimeInForce.GTC
       })
+      if (response.statusCode !== this.SUCCESS_STATUS_CODE) {
+        throw new Error(`bp placeMarketOrder failed, statusCode: ${response.statusCode}, message: ${response.error}`)
+      }
       return response.data.id
     } catch (error) {
       blogger.error('backpack placeMarketOrder failed', { symbol, side, quantity, error })
@@ -194,6 +199,9 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
         reduceOnly,
         timeInForce: TimeInForce.GTC
       })
+      if (response.statusCode !== this.SUCCESS_STATUS_CODE) {
+        throw new Error(`bp placeLimitOrder failed, statusCode: ${response.statusCode}, message: ${response.error}`)
+      }
       return response.data.id
     } catch (error) {
       blogger.error('backpack placeLimitOrder failed', { symbol, side, quantity, price, error })
@@ -202,14 +210,26 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   }
 
   async queryOrder(symbol: string, orderId: string): Promise<TQueryOrder> {
-    const identifier = this.parseOrderIdentifier(orderId)
     const keyInfo = this.getKeyInfo()
     const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
       apiSecret: keyInfo.secret
     })
+    const params = {
+      symbol,
+      orderId
+    }
     try {
-      const response = await tradingApi.order.getOpenOrder({ symbol, ...identifier })
+      const response = await tradingApi.order.getOpenOrder(params)
+      if (response.statusCode === 404 && response.error.code === 'RESOURCE_NOT_FOUND') {
+        return {
+          isCompleted: true,
+          result: null
+        }
+      }
+      if (response.statusCode !== this.SUCCESS_STATUS_CODE) {
+        throw new Error(`bp queryOrder failed, statusCode: ${response.statusCode}, message: ${response.error}`)
+      }
       return {
         isCompleted: COMPLETED_ORDER_STATUSES.has(response.data.status),
         result: response
@@ -221,17 +241,23 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   }
 
   async cancelOrder(symbol: string, orderId: string): Promise<TCancelOrder> {
-    const identifier = this.parseOrderIdentifier(orderId)
     const keyInfo = this.getKeyInfo()
     const tradingApi = new BpxApiClient({
       apiKey: keyInfo.apiKey,
       apiSecret: keyInfo.secret
     })
+    const params = {
+      symbol,
+      orderId
+    }
     try {
-      const response = await tradingApi.order.cancelOpenOrder({ symbol, ...identifier })
-      return { orderId: response.data.id ?? orderId }
+      const response = await tradingApi.order.cancelOpenOrder(params)
+      if (response.statusCode !== this.SUCCESS_STATUS_CODE) {
+        throw new Error(`bp cancelOrder failed, statusCode: ${response.statusCode}, message: ${response.error}`)
+      }
+      return { orderId: response.data.id }
     } catch (error) {
-      blogger.error('backpack cancelOrder failed', { symbol, orderId, error })
+      blogger.error('bp cancelOrder failed', { symbol, orderId, error })
       throw this.ensureError(error)
     }
   }
@@ -259,56 +285,15 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     return side === EKVSide.SHORT ? 'Ask' : 'Bid'
   }
 
-  private parseOrderIdentifier(orderId: string): BackpackOrderIdentifier {
-    if (/^\d+$/.test(orderId)) {
-      const numericId = Number(orderId)
-      if (Number.isSafeInteger(numericId)) {
-        return { clientId: numericId }
-      }
-    }
-    return { orderId }
-  }
-
   private toKVPosition(position: FuturePositionWithMargin): TKVPosition {
     return {
       exchangeName: this.exchangeName,
       symbol: position.symbol,
       exchangeToken: this.getExchangeToken(position.symbol),
-      leverage: this.deriveLeverage(position),
+      leverage: DEFAULT_LEVERAGE.toString(),
       positionAmt: position.netQuantity,
       notional: position.netExposureNotional
     }
-  }
-
-  private deriveLeverage(position: FuturePositionWithMargin): string {
-    const imf = Number(position.imf)
-    if (Number.isFinite(imf) && imf > 0) {
-      return (1 / imf).toString()
-    }
-    return '0'
-  }
-
-  private precisionFromStep(step?: string): number {
-    if (!step) {
-      return 0
-    }
-    const normalized = step.trim()
-    if (normalized === '') {
-      return 0
-    }
-    const expMatch = normalized.match(/e(-?)(\d+)$/i)
-    if (expMatch) {
-      const [, sign, digits] = expMatch
-      const exponent = Number(digits)
-      if (Number.isFinite(exponent)) {
-        return sign === '-' ? Math.abs(exponent) : 0
-      }
-    }
-    const [, decimals] = normalized.split('.')
-    if (!decimals) {
-      return 0
-    }
-    return decimals.replace(/0+$/, '').length
   }
 
   private ensureError(error: unknown): Error {

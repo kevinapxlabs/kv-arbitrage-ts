@@ -13,7 +13,7 @@ import {
   AsterPositionSide,
   AsterTimeInForce
 } from '../libs/aster/index.js'
-import type { AsterAccountPosition } from '../libs/aster/aster.types.js'
+import type { AsterAccountInfoResponse, AsterAccountPosition } from '../libs/aster/aster.types.js'
 import { AsterMarketInfoMgr } from '../manager/marketinfo/aster.marketinfo.js'
 import { TArbitrageConfig } from '../arbitrage/arbitrage.config.js'
 import { getKeyInfo } from '../utils/bnKey.js'
@@ -42,6 +42,10 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   readonly settlementAsset = 'USDT'
   readonly arbitrageConfig: TArbitrageConfig
 
+  // cache account info
+  accountInfoCache: AsterAccountInfoResponse | null = null
+  accountInfoUpdatedAt = 0
+
   constructor(traceId: string, arbitrageConfig: TArbitrageConfig) {
     this.traceId = traceId
     this.arbitrageConfig = arbitrageConfig
@@ -50,6 +54,28 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   private getKeyInfo(): TBNKey {
     const asterCfg = defiConfig.asterCfg
     return getKeyInfo(asterCfg.apiKey, asterCfg.apiSecret, '', defiConfig.pwd)
+  }
+
+  /**
+   * get account info
+   * 缓存2s
+   * @returns 
+   */
+  private async _getAccountInfo(): Promise<AsterAccountInfoResponse> {
+    const diffTime = 2000 // 2s
+    const now = Date.now()
+    if (this.accountInfoCache && this.accountInfoUpdatedAt > now - diffTime) {
+      return this.accountInfoCache
+    }
+    const keyInfo = this.getKeyInfo()
+    const accountApi = new AsterAccountApi({
+      apiKey: keyInfo.apiKey,
+      apiSecret: keyInfo.secret
+    })
+    const accountInfo = await accountApi.getAccountInfo()
+    this.accountInfoCache = accountInfo
+    this.accountInfoUpdatedAt = now
+    return accountInfo
   }
 
   isIncrease(riskData: TRiskDataInfo): boolean {
@@ -89,13 +115,8 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   }
 
   async getAccountInfo(): Promise<TAccountInfo> {
-    const keyInfo = this.getKeyInfo()
-    const accountApi = new AsterAccountApi({
-      apiKey: keyInfo.apiKey,
-      apiSecret: keyInfo.secret
-    })
     try {
-      const accountInfo = await accountApi.getAccountInfo()
+      const accountInfo = await this._getAccountInfo()
       const { totalInitialMargin, totalMaintMargin, totalMarginBalance } = accountInfo
       blogger.info(`${this.traceId} aster margin ratio, totalInitialMargin: ${totalInitialMargin}, totalMaintMargin: ${totalMaintMargin}, totalMarginBalance: ${totalMarginBalance}`)
       const imr = parseFloat(totalInitialMargin) / parseFloat(totalMarginBalance)
@@ -118,14 +139,9 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   }
 
   async getPositions(): Promise<TKVPosition[]> {
-    const keyInfo = this.getKeyInfo()
-    const accountApi = new AsterAccountApi({
-      apiKey: keyInfo.apiKey,
-      apiSecret: keyInfo.secret
-    })
     try {
-      const account = await accountApi.getAccountInfo()
-      return account.positions
+      const accountInfo = await this._getAccountInfo()
+      return accountInfo.positions
         .filter((position) => Number(position.positionAmt) !== 0)
         .map((position) => this.toKVPosition(position))
     } catch (error) {
@@ -212,14 +228,17 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   }
 
   async queryOrder(symbol: string, orderId: string): Promise<TQueryOrder> {
-    const identifier = this.parseOrderIdentifier(orderId)
     const keyInfo = this.getKeyInfo()
     const accountApi = new AsterAccountApi({
       apiKey: keyInfo.apiKey,
       apiSecret: keyInfo.secret
     })
+    const params = {
+      symbol,
+      orderId: Number(orderId)
+    }
     try {
-      const response = await accountApi.queryOrder({ symbol, ...identifier })
+      const response = await accountApi.queryOrder(params)
       return {
         isCompleted: COMPLETED_ORDER_STATUSES.has(response.status),
         result: response
@@ -231,14 +250,17 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   }
 
   async cancelOrder(symbol: string, orderId: string): Promise<TCancelOrder> {
-    const identifier = this.parseOrderIdentifier(orderId)
     const keyInfo = this.getKeyInfo()
     const accountApi = new AsterAccountApi({
       apiKey: keyInfo.apiKey,
       apiSecret: keyInfo.secret
     })
+    const params = {
+      symbol,
+      orderId: Number(orderId)
+    }
     try {
-      const response = await accountApi.cancelOrder({ symbol, ...identifier })
+      const response = await accountApi.cancelOrder(params)
       return { orderId: String(response.orderId ?? orderId) }
     } catch (error) {
       blogger.error('aster cancelOrder failed', { symbol, orderId, error })
@@ -269,16 +291,6 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
     return side === EKVSide.SHORT ? AsterOrderSide.SELL : AsterOrderSide.BUY
   }
 
-  private parseOrderIdentifier(orderId: string): AsterOrderIdentifier {
-    if (/^\d+$/.test(orderId)) {
-      const numericId = Number(orderId)
-      if (Number.isFinite(numericId)) {
-        return { orderId: numericId }
-      }
-    }
-    return { origClientOrderId: orderId }
-  }
-
   private toKVPosition(position: AsterAccountPosition): TKVPosition {
     return {
       exchangeName: this.exchangeName,
@@ -286,15 +298,8 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
       exchangeToken: this.getExchangeToken(position.symbol),
       leverage: position.leverage,
       positionAmt: position.positionAmt,
-      notional: this.computeNotional(position)
+      notional: '0'
     }
-  }
-
-  private computeNotional(position: AsterAccountPosition): string {
-    const qty = Number(position.positionAmt)
-    const price = Number(position.entryPrice)
-    const value = Math.abs(qty * price)
-    return Number.isFinite(value) ? value.toString() : '0'
   }
 
   private ensureError(error: unknown): Error {
