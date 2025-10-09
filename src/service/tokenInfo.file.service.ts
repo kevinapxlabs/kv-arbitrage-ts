@@ -93,8 +93,7 @@ export class TokenInfoFileService {
     const exchangeMap = await this.getExchangeMap()
 
     for (const entry of entries) {
-      const chainToken = this.normalize(entry.baseToken)
-      const normalizedSymbol = this.normalize(entry.symbol)
+      const chainToken = entry.baseToken
       const exchange = exchangeMap.get(entry.cexID)
       if (!exchange) {
         throw new Error(`Exchange not found: ${entry.cexID}`)
@@ -132,9 +131,7 @@ export class TokenInfoFileService {
       // allow lookups by chain token (standard) and normalized exchange symbol
       exchangeTokenInfoMap.set(TokenInfoService.getExchangeTokenKey(exchangeName, chainToken), exchangeTokenInfo)
 
-      if (normalizedSymbol.length > 0) {
-        exchangeTokenInfoMap.set(TokenInfoService.getExchangeTokenKey(exchangeName, normalizedSymbol), exchangeTokenInfo)
-      }
+      exchangeTokenInfoMap.set(TokenInfoService.getExchangeTokenKey(exchangeName, exchangeToken.exchangeToken), exchangeTokenInfo)
     }
 
     return { tokenInfoMap, exchangeTokenInfoMap }
@@ -230,13 +227,6 @@ export class TokenInfoFileService {
       exchanges.set(exchange.cexId, exchange)
     }
     return exchanges
-  }
-
-  /**
-   * 统一字符串，去除空格并转大写
-   */
-  private static normalize(value: string): string {
-    return value.trim().toUpperCase()
   }
 
   /**
