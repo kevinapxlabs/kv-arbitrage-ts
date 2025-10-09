@@ -27,7 +27,7 @@ export class OrderTakerMgr {
     await sleep(1000 + randomTime)
     for (let i = 0; i < 10; i++) {
       const order = await exchange.queryOrder(symbol, orderId)
-      blogger.info(`${this.traceId} exchange: ${exchange.exchangeName} query order, order: ${JSON.stringify(order)}`)
+      blogger.info(`${this.traceId} exchange: ${exchange.exchangeName} query order, i: ${i}, order: ${JSON.stringify(order)}`)
       if (order.isCompleted) {
         return
       }

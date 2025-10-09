@@ -1,6 +1,4 @@
 import { pool } from "../common/db/mysql.js"
-import { rdsClient } from "../common/db/redis.js"
-import { RedisKeyMgr } from "../common/redis.key.js"
 import { defiConfig } from "../config/config.js"
 import { TSMap } from "../libs/tsmap.js"
 import { ArbitrageConfigRep } from "../orm/arbitrage.config.js"

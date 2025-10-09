@@ -1,0 +1,4 @@
+[
+  {"id": 1, "cexID": 7, "symbol": "LINKUSDT", "baseToken": "LINK"},
+  {"id": 10001, "cexID": 5, "symbol": "LINK_USDC_PERP", "baseToken": "LINK"}
+]

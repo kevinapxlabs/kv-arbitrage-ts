@@ -3,7 +3,7 @@ import { ExchangeAdapter } from "../exchanges/exchange.adapter.js"
 import { AsterExchangeAdapter } from "../exchanges/aster.exchange.js"
 import { BackpackExchangeAdapter } from "../exchanges/backpack.exchange.js"
 import { TArbitrageConfig } from "./arbitrage.config.js"
-import { EExchangeCexId, EExchangeId } from "../common/exchange.enum.js"
+import { EExchangeId } from "../common/exchange.enum.js"
 
 export class ExchangeIndexMgr {
   exchangeList: ExchangeAdapter[] = []

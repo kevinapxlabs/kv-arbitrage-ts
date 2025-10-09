@@ -50,11 +50,11 @@ export class TokenInfoService {
    * @returns 
    */
   static getTokenInfoKey(tokenType: ETokenType): string {
-    return `APX:CROSS:FF:TOKEN_INFO:${tokenType}`
+    return `APX:ARBITRAGE:TOKEN_INFO:${tokenType}`
   }
 
   static getExchangeTokenInfoKey(tokenType: ETokenType): string {
-    return `APX:CROSS:FF:TOKEN_INFO:EXCHANGE:${tokenType}`
+    return `APX:ARBITRAGE:TOKEN_INFO:EXCHANGE:${tokenType}`
   }
 
   static getExchangeTokenKey(exchangeName: string, chainToken: string): string {

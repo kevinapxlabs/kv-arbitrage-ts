@@ -17,6 +17,7 @@ import { FundingFeeMgr } from "./fundingFee.data.js";
 import { TSMap } from "../libs/tsmap.js";
 import { DecreaseMgr } from "./decrease.js";
 import { RiskDataMock } from "../mock/riskdata.mock.js";
+import { TokenInfoFileService } from "../service/tokenInfo.file.service.js";
 
 /*
 * 管理funding fee 的所有逻辑，包括减仓、加仓、杠杆调整、rebalance、利润锁定、总结
@@ -89,8 +90,10 @@ export class ArbitrageManage extends ArbitrageBase {
         blogger.info(`${this.traceId} funding fee is paused`)
         return
       }
-      const tokenInfoMap = await TokenInfoService.getFuturesTokenMap()
-      const exchangeTokenInfoMap = await TokenInfoService.getFuturesExchangeTokenInfoMap()
+      // const tokenInfoMap = await TokenInfoService.getFuturesTokenMap()
+      // const exchangeTokenInfoMap = await TokenInfoService.getFuturesExchangeTokenInfoMap()
+      const tokenInfoMap = await TokenInfoFileService.getFuturesTokenMap()
+      const exchangeTokenInfoMap = await TokenInfoFileService.getFuturesExchangeTokenInfoMap()
       const exchangeIndexMgr = new ExchangeIndexMgr(this.traceId, arbitrageConfig)
       // 3. 获取交易所风控数据
       const riskMgr = new RiskDataMgr(this.traceId, exchangeIndexMgr, exchangeTokenInfoMap)
