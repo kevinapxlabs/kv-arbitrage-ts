@@ -135,7 +135,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     try {
       const positions = await tradingApi.futures.getOpenPositions()
       if (positions.statusCode !== this.SUCCESS_STATUS_CODE) {
-        throw new Error(`bp getPositions failed, statusCode: ${positions.statusCode}, message: ${positions.error}`)
+        throw new Error(`bp getPositions failed, statusCode: ${positions.statusCode}, message: ${JSON.stringify(positions.error)}`)
       }
       return positions.data
         .filter((position) => Number(position.netQuantity) !== 0)
@@ -175,7 +175,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
         timeInForce: TimeInForce.GTC
       })
       if (response.statusCode !== this.SUCCESS_STATUS_CODE) {
-        throw new Error(`bp placeMarketOrder failed, statusCode: ${response.statusCode}, message: ${response.error}`)
+        throw new Error(`bp placeMarketOrder failed, statusCode: ${response.statusCode}, message: ${JSON.stringify(response.error)}`)
       }
       return response.data.id
     } catch (error) {
@@ -201,7 +201,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
         timeInForce: TimeInForce.GTC
       })
       if (response.statusCode !== this.SUCCESS_STATUS_CODE) {
-        throw new Error(`bp placeLimitOrder failed, statusCode: ${response.statusCode}, message: ${response.error}`)
+        throw new Error(`bp placeLimitOrder failed, statusCode: ${response.statusCode}, message: ${JSON.stringify(response.error)}`)
       }
       return response.data.id
     } catch (error) {
@@ -229,7 +229,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
         }
       }
       if (response.statusCode !== this.SUCCESS_STATUS_CODE) {
-        throw new Error(`bp queryOrder failed, statusCode: ${response.statusCode}, message: ${response.error}`)
+        throw new Error(`bp queryOrder failed, statusCode: ${response.statusCode}, message: ${JSON.stringify(response.error)}`)
       }
       return {
         isCompleted: COMPLETED_ORDER_STATUSES.has(response.data.status),
@@ -254,7 +254,7 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     try {
       const response = await tradingApi.order.cancelOpenOrder(params)
       if (response.statusCode !== this.SUCCESS_STATUS_CODE) {
-        throw new Error(`bp cancelOrder failed, statusCode: ${response.statusCode}, message: ${response.error}`)
+        throw new Error(`bp cancelOrder failed, statusCode: ${response.statusCode}, message: ${JSON.stringify(response.error)}`)
       }
       return { orderId: response.data.id }
     } catch (error) {
