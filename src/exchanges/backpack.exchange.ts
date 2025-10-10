@@ -15,17 +15,14 @@ import { BpxApiClient, FuturePositionWithMargin, OrderStatus, OrderType, Side, T
 import { IncreasePositionDiscount } from './constant.js'
 import { DEFAULT_LEVERAGE } from '../arbitrage/arbitrage.constant.js'
 
+let backpackKeyInfo: TBNKey | undefined = undefined
+
 const COMPLETED_ORDER_STATUSES = new Set<OrderStatus>([
   OrderStatus.Cancelled,
   OrderStatus.Expired,
   OrderStatus.Filled,
   OrderStatus.TriggerFailed
 ])
-
-interface BackpackOrderIdentifier {
-  orderId?: string
-  clientId?: number
-}
 
 export class BackpackExchangeAdapter implements ExchangeAdapter {
   readonly traceId: string
@@ -41,6 +38,15 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
   constructor(traceId: string, arbitrageConfig: TArbitrageConfig) {
     this.traceId = traceId
     this.arbitrageConfig = arbitrageConfig
+  }
+
+  private getKeyInfo(): TBNKey {
+    if (backpackKeyInfo) {
+      return backpackKeyInfo
+    }
+    const backpackCfg = defiConfig.backpackCfg
+    backpackKeyInfo = getKeyInfo(backpackCfg.apiKey, backpackCfg.apiSecret, '', defiConfig.pwd)
+    return backpackKeyInfo
   }
 
   isIncrease(riskData: TRiskDataInfo): boolean {
@@ -68,11 +74,6 @@ export class BackpackExchangeAdapter implements ExchangeAdapter {
     }
     return EPositionDescrease.None
   } 
-
-  private getKeyInfo(): TBNKey {
-    const backpackCfg = defiConfig.backpackCfg
-    return getKeyInfo(backpackCfg.apiKey, backpackCfg.apiSecret, '', defiConfig.pwd)
-  }
 
   generateExchangeSymbol(exchangeToken: string): string {
     const token = this.normalizeSymbol(exchangeToken)

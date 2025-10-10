@@ -32,7 +32,7 @@ const COMPLETED_ORDER_STATUSES = new Set<
   AsterOrderStatus.EXPIRED
 ])
 
-type AsterOrderIdentifier = { orderId?: number; origClientOrderId?: string }
+let asterKeyInfo: TBNKey | undefined = undefined
 
 export class AsterExchangeAdapter implements ExchangeAdapter {
   readonly traceId: string
@@ -52,8 +52,12 @@ export class AsterExchangeAdapter implements ExchangeAdapter {
   }
 
   private getKeyInfo(): TBNKey {
+    if (asterKeyInfo) {
+      return asterKeyInfo
+    }
     const asterCfg = defiConfig.asterCfg
-    return getKeyInfo(asterCfg.apiKey, asterCfg.apiSecret, '', defiConfig.pwd)
+    asterKeyInfo = getKeyInfo(asterCfg.apiKey, asterCfg.apiSecret, '', defiConfig.pwd)
+    return asterKeyInfo
   }
 
   /**
