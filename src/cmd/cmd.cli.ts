@@ -6,6 +6,10 @@ import { ExchangeIndexMgr } from "../arbitrage/exchange.index.js"
 import { TKVPosition } from "../exchanges/types.js"
 import { TSMap } from "../libs/tsmap.js"
 import { ArbitrageConfig } from "../arbitrage/arbitrage.config.js"
+import { getKeyInfo } from "../utils/bnKey.js"
+import { AsterAccountApi } from "../libs/aster/aster.account.api.js"
+import { BpxApiClient } from "../libs/bpxClient/bpxApiClient.js"
+import { FuturePositionWithMargin } from "../libs/bpxClient/index.js"
 
 export class CmdCliMgr {
   async run() {
@@ -13,6 +17,18 @@ export class CmdCliMgr {
     switch (order) {
       case 'encrypt':
         await this.encrypt()
+        break
+      case 'asterAccountInfo':
+        await this.asterAccountInfo()
+        break
+      case 'asterPositionInfo':
+        await this.asterPositionInfo()
+        break
+      case 'bpAccountInfo':
+        await this.bpAccountInfo()
+        break
+      case 'bpPositionInfo':
+        await this.bpPositionInfo()
         break
       case 'positionInfo':
         await this.positionInfo()
@@ -36,6 +52,94 @@ export class CmdCliMgr {
     const aes = new AESCipher(`${pwd}1114`)
     const encryptedText = aes.encrypt(content)
     console.log(`text: ${encryptedText}`)
+  }
+
+  async asterAccountInfo() {
+    const asterCfg = defiConfig.asterCfg
+    const keyInfo = getKeyInfo(asterCfg.apiKey, asterCfg.apiSecret, '', defiConfig.pwd)
+    const accountApi = new AsterAccountApi({
+      apiKey: keyInfo.apiKey,
+      apiSecret: keyInfo.secret
+    })
+    try {
+      const accountInfo = await accountApi.getAccountInfo()
+      const positions = accountInfo.positions
+      const assets = accountInfo.assets
+      accountInfo.positions = []
+      accountInfo.assets = []
+      console.log(accountInfo)
+      for (const position of positions) {
+        if (!BigNumber(position.positionAmt).eq(0)) {
+          console.log(position)
+        }
+      }
+      for (const asset of assets) {
+        if (!BigNumber(asset.crossWalletBalance).eq(0)) {
+          console.log(asset)
+        }
+      }
+    } catch (error) {
+      console.error('asterAccountInfo failed, error: ', error)
+    }
+  }
+
+  async asterPositionInfo() {
+    const asterCfg = defiConfig.asterCfg
+    const keyInfo = getKeyInfo(asterCfg.apiKey, asterCfg.apiSecret, '', defiConfig.pwd)
+    const accountApi = new AsterAccountApi({
+      apiKey: keyInfo.apiKey,
+      apiSecret: keyInfo.secret
+    })
+    try {
+      const positionInfo = await accountApi.getPositionRisk()
+      console.log('position length:', positionInfo.length)
+      for (const position of positionInfo) {
+        if (!BigNumber(position.positionAmt).eq(0)) {
+          console.log(position)
+        }
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  async bpAccountInfo() {
+    const bpCfg = defiConfig.backpackCfg
+    const keyInfo = getKeyInfo(bpCfg.apiKey, bpCfg.apiSecret, '', defiConfig.pwd)
+    const accountApi = new BpxApiClient({
+      apiKey: keyInfo.apiKey,
+      apiSecret: keyInfo.secret
+    })
+    try {
+      const accountInfo = await accountApi.capital.getCollateral()
+      console.log(accountInfo)
+    } catch (error) {
+      console.error('bpAccountInfo failed, error: ', error)
+    }
+  }
+
+  async bpPositionInfo() {
+    const bpCfg = defiConfig.backpackCfg
+    const keyInfo = getKeyInfo(bpCfg.apiKey, bpCfg.apiSecret, '', defiConfig.pwd)
+    const accountApi = new BpxApiClient({
+      apiKey: keyInfo.apiKey,
+      apiSecret: keyInfo.secret
+    })
+    try {
+      const positionInfo = await accountApi.futures.getOpenPositions()
+      if (positionInfo.statusCode !== 200) {
+        throw new Error(`bpPositionInfo failed, statusCode: ${positionInfo.statusCode}, message: ${JSON.stringify(positionInfo.error)}`)
+      }
+      console.log('position length:', positionInfo.data.length)
+      const data = positionInfo.data as FuturePositionWithMargin[]
+      for (const position of data) {
+        if (!BigNumber(position.netQuantity).eq(0)) {
+          console.log(position)
+        }
+      }
+    } catch (error) {
+      console.error('bpPositionInfo failed, error: ', error)
+    }
   }
 
   // 获取positionInfo
@@ -90,9 +194,13 @@ export class CmdCliMgr {
 
   help() {
     const help = `usage:
-    node cmd.cli.js encrypt <content>
-          positionInfo    获取positionInfo
-          createTestData  创建测试数据
+    node cmd.cli.js encrypt   <content>
+          asterAccountInfo    获取aster账户信息
+          asterPositionInfo   获取aster持仓信息
+          bpAccountInfo       获取bp账户信息
+          bpPositionInfo      获取bp持仓信息
+          positionInfo        获取positionInfo
+          createTestData      创建测试数据
 `
       console.log(help)
   }

@@ -113,3 +113,4 @@ tokenList.js
 
 config/arbitrageExchanges.json
 config/arbitrageExchangesDev.json
+config/tokeninfo.json
